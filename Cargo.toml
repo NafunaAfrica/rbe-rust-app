@@ -40,3 +40,12 @@ debug = 0
 [profile.dev.package."*"]
 debug = false
 opt-level = 1
+
+# Release: tuned so CI / small servers don't OOM on the surrealdb crate graph.
+# Thin LTO + opt-level "s" keep memory and time reasonable; strip shrinks the
+# binary. (Lesson from the BrandZa build.)
+[profile.release]
+opt-level = "s"
+lto = "thin"
+strip = true
+codegen-units = 16

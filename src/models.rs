@@ -37,6 +37,18 @@ fn one() -> f64 {
     1.0
 }
 
+/// Available sizes for every tee (the storefront is size-based; Shopify holds a
+/// variant per size once a product is published there).
+pub const SIZES: [&str; 6] = ["XS", "S", "M", "L", "XL", "2XL"];
+
+impl Product {
+    /// Whether this product has been published to Shopify (and is therefore
+    /// buyable). We treat a Printify sync as the signal it reached Shopify.
+    pub fn is_live(&self) -> bool {
+        self.printify_product_id.is_some()
+    }
+}
+
 impl Product {
     /// First line of the (possibly multi-line) slogan — used for card titles.
     pub fn slogan_first_line(&self) -> &str {

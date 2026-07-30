@@ -32,6 +32,8 @@ pub fn tee_mockup(image: &str, alt: &str, tee_color: &str) -> Markup {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        // Health check (Coolify probes this inside the container)
+        .route("/health", get(|| async { "ok" }))
         // Storefront
         .route("/", get(home::home))
         .route("/shop", get(shop::shop_index))

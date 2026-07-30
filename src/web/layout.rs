@@ -139,7 +139,7 @@ fn cart_drawer() -> Markup {
                     div class="py-16 text-center text-sm opacity-60" { "Empty. Go find your slogan." }
                 }
                 ul class="space-y-4" {
-                    template x-for="it in $store.cart.items" ":key"="it.variantId" {
+                    template x-for="it in $store.cart.items" ":key"="it.id" {
                         li class="flex gap-4 border-b border-ink/10 pb-4" {
                             div class="h-24 w-24 shrink-0 overflow-hidden rounded bg-white" {
                                 img ":src"="it.image" ":alt"="it.title" class="h-full w-full object-cover";
@@ -153,13 +153,13 @@ fn cart_drawer() -> Markup {
                                         }
                                     }
                                     button class="text-xs uppercase text-[color:var(--hot)]"
-                                        "@click"="$store.cart.remove(it.variantId)" { "Remove" }
+                                        "@click"="$store.cart.remove(it.id)" { "Remove" }
                                 }
                                 div class="mt-auto flex items-center justify-between" {
                                     div class="inline-flex items-center gap-2 rounded border border-ink/20" {
-                                        button class="px-2 py-1" "@click"="$store.cart.setQty(it.variantId, it.qty - 1)" { "−" }
+                                        button class="px-2 py-1" "@click"="$store.cart.setQty(it.id, it.qty - 1)" { "−" }
                                         span class="min-w-[1.5rem] text-center text-sm" x-text="it.qty" {}
-                                        button class="px-2 py-1" "@click"="$store.cart.setQty(it.variantId, it.qty + 1)" { "+" }
+                                        button class="px-2 py-1" "@click"="$store.cart.setQty(it.id, it.qty + 1)" { "+" }
                                     }
                                     div class="font-semibold" x-text="'$' + (it.price * it.qty).toFixed(2)" {}
                                 }
@@ -196,13 +196,13 @@ document.addEventListener('alpine:init', () => {
     open: false,
     save(){ localStorage.setItem('rbe_cart_v2', JSON.stringify(this.items)); },
     add(item){
-      const i = this.items.findIndex(x => x.variantId === item.variantId);
+      const i = this.items.findIndex(x => x.id === item.id);
       if (i >= 0) this.items[i].qty += item.qty; else this.items.push(item);
       this.save(); this.open = true;
     },
-    remove(id){ this.items = this.items.filter(x => x.variantId !== id); this.save(); },
+    remove(id){ this.items = this.items.filter(x => x.id !== id); this.save(); },
     setQty(id, q){
-      const it = this.items.find(x => x.variantId === id);
+      const it = this.items.find(x => x.id === id);
       if (it) it.qty = Math.max(0, q);
       this.items = this.items.filter(x => x.qty > 0); this.save();
     },
@@ -212,10 +212,10 @@ document.addEventListener('alpine:init', () => {
       if (this.items.length === 0) return;
       const res = await fetch('/api/checkout', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ items: this.items.map(i => ({ variantId: i.variantId, qty: i.qty })) })
+        body: JSON.stringify({ items: this.items.map(i => ({ slug: i.slug, size: i.size, qty: i.qty })) })
       });
-      if (!res.ok){ alert('Checkout failed'); return; }
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok){ alert(data.error || 'Checkout failed. Please try again.'); return; }
       const u = new URL(data.url); u.searchParams.set('channel','online_store');
       window.location = u.toString();
     }

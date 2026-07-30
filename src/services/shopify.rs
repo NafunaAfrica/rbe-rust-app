@@ -1,6 +1,11 @@
 //! Shopify Storefront API client (server-side port of the reference app's
 //! `src/lib/shopify.ts`). Moving these calls to the backend means the
 //! storefront token is no longer shipped to the browser.
+//!
+//! This is a fuller client than the storefront currently calls (the catalog is
+//! DB-driven; only checkout hits Shopify), so some methods/fields are kept as
+//! library surface for later use.
+#![allow(dead_code)]
 
 use serde::Deserialize;
 use serde_json::json;

@@ -40,7 +40,9 @@ RUN cargo build --release --bin rbe
 
 # --- 3. Runtime ---
 FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+# curl is required so Coolify's in-container health check (GET /health) works —
+# a slim image has neither curl nor wget, which silently fails the deploy.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 rbe
 WORKDIR /app
@@ -55,5 +57,7 @@ ENV RBE_DATA_DIR=/data/surreal
 ENV RBE_BIND_ADDR=0.0.0.0:8080
 VOLUME ["/data"]
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 USER rbe
 CMD ["rbe"]

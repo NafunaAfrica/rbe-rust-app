@@ -1,0 +1,7 @@
+# The project lives on a G: drive (non-NTFS). Rust's incremental compilation
+# cache relies on hard links, which such filesystems don't support — that
+# corrupts the cache and can crash rustc (STATUS_STACK_BUFFER_OVERRUN) on
+# crates that previously compiled fine. Disabling incremental trades a slightly
+# slower rebuild for reliability. (Lesson from the BrandZa build.)
+[build]
+incremental = false

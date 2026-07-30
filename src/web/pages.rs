@@ -75,12 +75,12 @@ pub async fn journal() -> Html<String> {
             h1 class="mt-2 font-display text-6xl md:text-8xl" { "JOURNAL" }
             div class="mt-12 grid gap-6 md:grid-cols-2" {
                 @for (title, tag, date) in POSTS {
-                    article class="group cursor-pointer rounded-lg border border-ink/10 bg-white p-8 transition hover:border-[color:var(--hot)] hover:shadow-xl hover:shadow-[color:var(--hot)]/10" {
+                    article class="rounded-lg border border-ink/10 bg-white p-8" {
                         div class="flex items-center justify-between text-xs uppercase tracking-widest opacity-60" {
                             span { (tag) } span { (date) }
                         }
-                        h2 class="mt-4 font-serif-display text-3xl leading-snug group-hover:text-[color:var(--hot)]" { (title) }
-                        div class="mt-6 text-xs uppercase tracking-widest opacity-60" { "Read →" }
+                        h2 class="mt-4 font-serif-display text-3xl leading-snug" { (title) }
+                        div class="mt-6 text-xs uppercase tracking-widest text-[color:var(--hot)]/70" { "Coming soon" }
                     }
                 }
             }

@@ -1,5 +1,8 @@
-//! Storefront: shop grid, product detail, and the checkout hand-off to Shopify.
-//! Ported from the reference `src/routes/shop.tsx` and `shop.$slug.tsx`.
+//! Storefront. The catalog is **database-driven**: the grid and product pages
+//! render from SurrealDB (the seeded RBE designs), so the shop is never empty.
+//! Checkout **checks Shopify** — for each item we look the product up in Shopify
+//! by handle and use its live variant, so checkout activates automatically once
+//! a product is published there (via the Printify sync or Shopify admin).
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -9,16 +12,19 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
-use crate::services::shopify::{Product, Shopify, format_money};
+use crate::models::{Product, SIZES};
+use crate::services::shopify::Shopify;
 use crate::state::AppState;
 
 use super::layout::{Nav, shell};
+use super::tee_mockup;
 
 pub async fn shop_index(State(state): State<AppState>) -> AppResult<Html<String>> {
-    let shopify = Shopify::new(state.cfg(), state.http());
-    // The storefront depends on Shopify; if it's unreachable we still render a
-    // graceful empty state rather than erroring the whole page.
-    let products = shopify.products(50).await.unwrap_or_default();
+    let products: Vec<Product> = state
+        .db()
+        .query("SELECT * FROM product ORDER BY slug")
+        .await?
+        .take(0)?;
 
     let body = html! {
         div class="mx-auto max-w-7xl px-4 py-16 md:px-8" {
@@ -26,22 +32,11 @@ pub async fn shop_index(State(state): State<AppState>) -> AppResult<Html<String>
                 div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "The full drop" }
                 h1 class="mt-2 font-display text-6xl md:text-8xl" { "SHOP" }
                 p class="mt-3 max-w-xl font-serif-display text-xl opacity-70" {
-                    @if products.is_empty() { "No products yet." }
-                    @else { (products.len()) " " (if products.len() == 1 { "slogan" } else { "slogans" }) ". One energy." }
+                    (products.len()) " " (if products.len() == 1 { "slogan" } else { "slogans" }) ". One energy."
                 }
             }
-            @if products.is_empty() {
-                div class="rounded-lg border border-dashed border-ink/20 bg-white/50 p-12 text-center" {
-                    div class="font-display text-3xl" { "No products found" }
-                    p class="mt-3 mx-auto max-w-md text-sm opacity-70" {
-                        "The Shopify store has no products yet, or the storefront is unreachable. Sync from Printify at "
-                        a href="/admin/printify" class="underline" { "/admin/printify" } "."
-                    }
-                }
-            } @else {
-                div class="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4" {
-                    @for p in &products { (product_card(p)) }
-                }
+            div class="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4" {
+                @for p in &products { (product_card(p)) }
             }
         }
         (cache_bust_script())
@@ -56,22 +51,16 @@ pub async fn shop_index(State(state): State<AppState>) -> AppResult<Html<String>
 }
 
 fn product_card(p: &Product) -> Markup {
-    let img = p.first_image();
-    let price = &p.price_range.min_variant_price;
     html! {
-        a href=(format!("/shop/{}", p.handle)) class="group block" {
-            div class="aspect-square overflow-hidden rounded-md bg-white transition group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-[color:var(--hot)]/20" {
-                @if let Some(img) = img {
-                    img src=(img.url) alt=(img.alt_text.clone().unwrap_or_else(|| p.title.clone()))
-                        class="h-full w-full object-cover" loading="lazy";
-                } @else {
-                    div class="flex h-full w-full items-center justify-center text-xs opacity-40" { "No image" }
-                }
+        a href=(format!("/shop/{}", p.slug)) class="group block" {
+            div class="overflow-hidden rounded-md bg-white p-3 transition group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-[color:var(--hot)]/20" {
+                (tee_mockup(&p.image, &p.slogan_flat(), &p.tee_color))
             }
             div class="mt-3 flex items-center justify-between" {
-                div class="text-sm font-semibold uppercase" { (p.title) }
-                div class="text-sm" { (format_money(&price.amount, &price.currency_code)) }
+                div class="text-sm font-semibold uppercase" { (p.slogan_first_line()) }
+                div class="text-sm" { "$" (p.price) }
             }
+            div class="text-xs uppercase tracking-widest opacity-60" { (p.vibe) }
         }
     }
 }
@@ -80,60 +69,38 @@ pub async fn product_detail(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> AppResult<Html<String>> {
-    let shopify = Shopify::new(state.cfg(), state.http());
-    let product = shopify.product_by_handle(&slug).await?.ok_or(AppError::NotFound)?;
-
-    let img = product.first_image();
-    let img_url = img.map(|i| i.url.clone());
-    let price = &product.price_range.min_variant_price;
-
-    // Serialize the fields the Alpine component needs for variant selection.
-    let data = json!({
-        "title": product.title,
-        "image": img_url,
-        "options": product.options.iter().map(|o| json!({ "name": o.name, "values": o.values })).collect::<Vec<_>>(),
-        "variants": product.variants.0.iter().map(|v| json!({
-            "id": v.id,
-            "availableForSale": v.available_for_sale,
-            "price": { "amount": v.price.amount, "currencyCode": v.price.currency_code },
-            "selectedOptions": v.selected_options.iter().map(|so| json!({ "name": so.name, "value": so.value })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-    });
+    let product: Option<Product> = state
+        .db()
+        .query("SELECT * FROM type::thing('product', $slug)")
+        .bind(("slug", slug))
+        .await?
+        .take(0)?;
+    let product = product.ok_or(AppError::NotFound)?;
 
     let body = html! {
-        div class="bg-[color:var(--cream)]" x-data="productPage()" {
-            script { (PreEscaped(format!("window.__PRODUCT__ = {};", data))) }
+        div class="bg-[color:var(--cream)]"
+            x-data=(format!("productPage({})", product_json(&product))) {
             div class="mx-auto max-w-7xl px-4 pb-16 pt-8 md:px-8" {
                 a href="/shop" class="text-xs uppercase tracking-widest opacity-60 hover:opacity-100" { "← All tees" }
                 div class="mt-6 grid gap-10 md:grid-cols-2" {
                     div class="rounded-lg bg-white p-6 shadow-xl shadow-[color:var(--hot)]/20" {
-                        @if let Some(url) = &img_url {
-                            img src=(url) alt=(product.title) class="mx-auto aspect-square w-full rounded-md object-cover";
-                        } @else {
-                            div class="flex aspect-square items-center justify-center text-sm opacity-40" { "No image" }
-                        }
+                        (tee_mockup(&product.image, &product.slogan_flat(), &product.tee_color))
                     }
                     div class="flex flex-col" {
-                        div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "RBE Drop" }
-                        h1 class="mt-2 font-display text-5xl leading-none md:text-6xl" { (product.title) }
-                        div class="mt-6 text-2xl font-semibold"
-                            x-text="'$' + parseFloat(activePrice.amount).toFixed(2)" {
-                            (format_money(&price.amount, &price.currency_code))
-                        }
-                        @if !product.description.is_empty() {
-                            p class="mt-4 max-w-md font-serif-display text-xl opacity-80" { (product.description) }
-                        }
+                        div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "RBE Drop · " (product.vibe) }
+                        h1 class="mt-2 font-display text-5xl leading-none md:text-6xl" { (product.slogan_flat()) }
+                        div class="mt-6 text-2xl font-semibold" { "$" (product.price) }
+                        p class="mt-4 max-w-md font-serif-display text-xl opacity-80" { (product.description) }
 
-                        template x-for="opt in data.options" ":key"="opt.name" {
-                            div class="mt-8" {
-                                div class="mb-2 text-xs uppercase tracking-widest opacity-70" x-text="opt.name" {}
-                                div class="flex flex-wrap gap-2" {
-                                    template x-for="v in opt.values" ":key"="v" {
-                                        button
-                                            "@click"="selected[opt.name] = v"
-                                            ":class"="selected[opt.name] === v ? 'border-[color:var(--hot)] bg-[color:var(--hot)] text-white' : 'border-ink/20 hover:border-ink'"
-                                            class="min-w-11 h-11 rounded-full border px-4 text-sm font-semibold transition"
-                                            x-text="v" {}
+                        div class="mt-8" {
+                            div class="mb-2 text-xs uppercase tracking-widest opacity-70" { "Size" }
+                            div class="flex flex-wrap gap-2" {
+                                @for s in SIZES {
+                                    button
+                                        "@click"=(format!("size = '{s}'"))
+                                        ":class"=(format!("size === '{s}' ? 'border-[color:var(--hot)] bg-[color:var(--hot)] text-white' : 'border-ink/20 hover:border-ink'"))
+                                        class="min-w-11 h-11 rounded-full border px-4 text-sm font-semibold transition" {
+                                        (s)
                                     }
                                 }
                             }
@@ -141,9 +108,8 @@ pub async fn product_detail(
 
                         div class="mt-8 flex flex-col gap-3 sm:flex-row" {
                             button "@click"="addToBag()"
-                                ":disabled"="!activeVariant || !activeVariant.availableForSale"
-                                class="inline-flex items-center justify-center gap-2 rounded-full bg-ink px-8 py-4 font-display text-lg uppercase tracking-widest text-cream transition hover:bg-[color:var(--hot)] disabled:opacity-40"
-                                x-text="added ? 'Added ✓' : (activeVariant && !activeVariant.availableForSale ? 'Sold out' : 'Add to bag — $' + parseFloat(activePrice.amount).toFixed(2))" {}
+                                class="inline-flex items-center justify-center gap-2 rounded-full bg-ink px-8 py-4 font-display text-lg uppercase tracking-widest text-cream transition hover:bg-[color:var(--hot)]"
+                                x-text=(format!("added ? 'Added ✓' : 'Add to bag — ${}'", product.price)) {}
                         }
 
                         ul class="mt-8 space-y-2 text-sm opacity-80" {
@@ -159,18 +125,32 @@ pub async fn product_detail(
     };
 
     Ok(Html(shell(
-        &format!("{} — RBE", product.title),
-        if product.description.is_empty() { &product.title } else { &product.description },
+        &format!("{} — RBE", product.slogan_flat()),
+        &product.description,
         Nav::Shop,
         body,
     ).into_string()))
 }
 
-/// POST /api/checkout — body `{ items: [{ variantId, qty }] }` → Shopify cart URL.
+/// JSON blob the product-page Alpine component needs for add-to-bag.
+fn product_json(p: &Product) -> String {
+    json!({
+        "slug": p.slug,
+        "title": p.slogan_flat(),
+        "image": p.image,
+        "price": p.price,
+    })
+    .to_string()
+}
+
+/// POST /api/checkout — body `{ items: [{ slug, size, qty }] }`.
+/// Looks each product up in Shopify by handle and builds a Shopify cart, so
+/// checkout only works for products actually published to Shopify.
 #[derive(Deserialize)]
 pub struct CheckoutItem {
-    #[serde(rename = "variantId")]
-    variant_id: String,
+    slug: String,
+    #[serde(default)]
+    size: Option<String>,
     qty: i32,
 }
 
@@ -182,36 +162,79 @@ pub struct CheckoutReq {
 pub async fn checkout(
     State(state): State<AppState>,
     Json(req): Json<CheckoutReq>,
-) -> AppResult<Json<serde_json::Value>> {
+) -> (axum::http::StatusCode, Json<serde_json::Value>) {
+    use axum::http::StatusCode;
+    let err = |code: StatusCode, msg: String| (code, Json(json!({ "error": msg })));
+
     if req.items.is_empty() {
-        return Err(AppError::BadRequest("cart is empty".into()));
+        return err(StatusCode::BAD_REQUEST, "Your bag is empty.".into());
     }
     let shopify = Shopify::new(state.cfg(), state.http());
-    let lines: Vec<(String, i32)> = req.items.into_iter().map(|i| (i.variant_id, i.qty)).collect();
-    let url = shopify.create_cart(&lines).await?;
-    Ok(Json(json!({ "url": url })))
+
+    let mut lines: Vec<(String, i32)> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+
+    for item in &req.items {
+        let found = match shopify.product_by_handle(&item.slug).await {
+            Ok(v) => v,
+            Err(e) => return err(StatusCode::BAD_GATEWAY, format!("Shopify error: {e}")),
+        };
+        match found {
+            Some(sp) => {
+                // Prefer the variant matching the chosen size; else first variant.
+                let variant = item
+                    .size
+                    .as_ref()
+                    .and_then(|sz| {
+                        sp.variants.0.iter().find(|v| {
+                            v.selected_options
+                                .iter()
+                                .any(|o| o.name.eq_ignore_ascii_case("size") && &o.value == sz)
+                        })
+                    })
+                    .or_else(|| sp.variants.0.first());
+                match variant {
+                    Some(v) => lines.push((v.id.clone(), item.qty)),
+                    None => missing.push(item.slug.clone()),
+                }
+            }
+            None => missing.push(item.slug.clone()),
+        }
+    }
+
+    if !missing.is_empty() {
+        return err(
+            StatusCode::CONFLICT,
+            format!(
+                "Not live for checkout yet: {}. These drops need to be published to Shopify first (sync them from the admin panel).",
+                missing.join(", ")
+            ),
+        );
+    }
+
+    match shopify.create_cart(&lines).await {
+        Ok(url) => (StatusCode::OK, Json(json!({ "url": url }))),
+        Err(e) => err(StatusCode::BAD_GATEWAY, format!("Shopify checkout error: {e}")),
+    }
 }
 
 fn product_page_script() -> Markup {
     PreEscaped(
         r#"<script>
-function productPage(){
+function productPage(product){
   return {
-    data: window.__PRODUCT__,
-    selected: {},
+    product,
+    size: 'M',
     added: false,
-    init(){ for (const o of this.data.options) this.selected[o.name] = o.values[0]; },
-    get activeVariant(){
-      return this.data.variants.find(v => v.selectedOptions.every(so => this.selected[so.name] === so.value)) || this.data.variants[0];
-    },
-    get activePrice(){ const v = this.activeVariant; return v ? v.price : { amount: '0', currencyCode: 'USD' }; },
     addToBag(){
-      const v = this.activeVariant; if (!v) return;
-      const sizeOpt = this.data.options.find(o => o.name.toLowerCase() === 'size');
       this.$store.cart.add({
-        variantId: v.id, title: this.data.title, image: this.data.image,
-        price: parseFloat(v.price.amount), currency: v.price.currencyCode,
-        size: sizeOpt ? this.selected[sizeOpt.name] : null, qty: 1
+        id: this.product.slug + ':' + this.size,
+        slug: this.product.slug,
+        title: this.product.title,
+        image: this.product.image,
+        price: this.product.price,
+        size: this.size,
+        qty: 1,
       });
       this.added = true; setTimeout(() => this.added = false, 1500);
     }
@@ -221,8 +244,7 @@ function productPage(){
     )
 }
 
-/// Live shop-cache invalidation: subscribe to server-sent events and reload the
-/// grid when a webhook bumps the version (SurrealDB LIVE → SSE).
+/// Live shop-cache invalidation (SurrealDB event bus → SSE → reload).
 fn cache_bust_script() -> Markup {
     PreEscaped(
         r#"<script>

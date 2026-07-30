@@ -11,6 +11,8 @@
 //! role, so the wiring compiles and can be exercised end-to-end once
 //! `ANTHROPIC_API_KEY` is set.
 
+#![allow(dead_code)] // scaffold: fields/methods used once the agent is built out
+
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::anthropic;
