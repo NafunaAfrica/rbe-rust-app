@@ -16,3 +16,9 @@
 # OS
 Thumbs.db
 .DS_Store
+
+# build logs
+*.log
+
+# Coolify deploy token (local only)
+.coolify.env
