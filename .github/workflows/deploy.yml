@@ -1,14 +1,12 @@
 # CI/CD: GitHub builds the container (the server cannot compile Rust), pushes it
-# to GitHub Container Registry (GHCR), then optionally deploys over SSH by having
-# the server pull the new image and restart.
+# to GitHub Container Registry (GHCR), then pings Coolify's deploy webhook so the
+# server pulls the new image. Matches the BrandZa infra (Coolify + Cloudflare).
 #
-# Required repo secrets for the deploy job (Settings → Secrets and variables →
-# Actions). If they're absent, the deploy job is skipped and only the image is
-# built + pushed:
-#   SSH_HOST         e.g. dev.gobhora.co.zw
-#   SSH_USER         deploy user on the server
-#   SSH_KEY          private key (PEM) authorized on the server
-#   SSH_PORT         optional, defaults to 22
+# Optional repo secret (Settings → Secrets and variables → Actions):
+#   COOLIFY_WEBHOOK_URL   the app's "Deploy Webhook" URL from Coolify
+#   COOLIFY_TOKEN         a Coolify API token (Bearer) for the webhook
+# If COOLIFY_WEBHOOK_URL is absent, the redeploy step is skipped (build+push
+# still runs, and Coolify can auto-deploy by watching the image instead).
 
 name: build-and-deploy
 
@@ -59,19 +57,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # Only runs if an SSH host secret is configured.
+    # Only runs if the Coolify webhook is configured.
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            cd ${{ vars.DEPLOY_DIR || '/opt/rbe' }}
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+      - name: Trigger Coolify redeploy
+        run: |
+          curl -fsSL -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
