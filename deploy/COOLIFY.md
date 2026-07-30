@@ -3,28 +3,18 @@
 Same infra as BrandZa: **GitHub Actions builds the image → GHCR → Coolify pulls
 it** on the server, behind **Cloudflare**. The server never compiles Rust.
 
-Do the steps in order. Replace `<OWNER>` with your GitHub username/org.
+Do the steps in order.
 
 ---
 
-## 1. Push the repo to GitHub
+## 1. Push the repo to GitHub  ✅ done
 
-Create an **empty** repo on github.com named `rbe` (no README/license), then:
-
-```bash
-cd G:/rbe-rust-app
-git remote add origin https://github.com/<OWNER>/rbe.git
-git push -u origin main
-```
-
-(If push asks for a password, use a **Personal Access Token** with `repo` scope,
-not your account password.)
-
-The `.github/workflows/deploy.yml` workflow runs on push and builds + pushes:
+Repo `NafunaAfrica/rbe-rust-app` is created and `main` is pushed, so the
+`.github/workflows/deploy.yml` workflow is already running. It builds + pushes:
 
 ```
-ghcr.io/<OWNER>/rbe:latest
-ghcr.io/<OWNER>/rbe:<commit-sha>
+ghcr.io/nafunaafrica/rbe-rust-app:latest
+ghcr.io/nafunaafrica/rbe-rust-app:<commit-sha>
 ```
 
 Watch it under the repo's **Actions** tab. First build is ~5–10 min (cold cache).
@@ -35,12 +25,12 @@ Watch it under the repo's **Actions** tab. First build is ~5–10 min (cold cach
 
 By default the GHCR package is **private**. Either:
 
-- **Make it public** (fine for a store): GitHub → your profile → *Packages* →
-  `rbe` → *Package settings* → *Change visibility* → Public. Verify:
+- **Make it public** (fine for a store): GitHub → the org's *Packages* →
+  `rbe-rust-app` → *Package settings* → *Change visibility* → Public. Verify:
   ```bash
-  token=$(curl -s "https://ghcr.io/token?scope=repository:<OWNER>/rbe:pull&service=ghcr.io" | jq -r .token)
+  token=$(curl -s "https://ghcr.io/token?scope=repository:nafunaafrica/rbe-rust-app:pull&service=ghcr.io" | jq -r .token)
   curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $token" \
-    https://ghcr.io/v2/<OWNER>/rbe/manifests/latest      # 200 = public & exists
+    https://ghcr.io/v2/nafunaafrica/rbe-rust-app/manifests/latest      # 200 = public & exists
   ```
 - **Or keep it private** and give Coolify a registry credential: a GitHub PAT
   with `read:packages`, added in Coolify under the server's Docker registries.
@@ -62,7 +52,7 @@ In **Cloudflare** for `nafuna.africa`, add a record for `tanya`:
 Coolify dashboard → your project (or **+ New** → Project) → **+ New Resource** →
 **Docker Image**.
 
-- **Image:** `ghcr.io/<OWNER>/rbe:latest`
+- **Image:** `ghcr.io/nafunaafrica/rbe-rust-app:latest`
 - **Ports exposed:** `8080`
 - **Domain:** `https://tanya.nafuna.africa`
 - **Health check:** path `/health`, port `8080` (the image already has `curl`
