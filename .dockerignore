@@ -1,0 +1,7 @@
+/target
+/data
+/tools
+/reference
+.env
+.git
+**/*.md

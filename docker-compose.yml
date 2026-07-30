@@ -1,0 +1,18 @@
+# One-container deploy. `docker compose up --build` builds the image (Rust +
+# Tailwind, no Node) and runs it with a persistent volume for SurrealDB.
+services:
+  rbe:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      RBE_DATA_DIR: /data/surreal
+      RBE_BIND_ADDR: 0.0.0.0:8080
+    volumes:
+      - rbe-data:/data
+    restart: unless-stopped
+
+volumes:
+  rbe-data:

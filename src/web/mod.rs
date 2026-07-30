@@ -1,0 +1,57 @@
+//! Web layer: HTML pages (Maud), the storefront/admin handlers, and the router.
+
+pub mod admin;
+pub mod auth_page;
+pub mod home;
+pub mod layout;
+pub mod pages;
+pub mod shop;
+
+use axum::Router;
+use axum::routing::{get, post};
+use maud::{Markup, html};
+use tower_http::trace::TraceLayer;
+use tower_http::services::ServeDir;
+
+use crate::events;
+use crate::state::AppState;
+use crate::webhooks;
+
+/// A tee "mockup" tile — the product image over its tee-color background.
+/// (The reference app overlaid transparent SVG designs; those assets were
+/// hosted on Lovable, so for now we show the local photo mockups.)
+pub fn tee_mockup(image: &str, alt: &str, tee_color: &str) -> Markup {
+    html! {
+        div class="relative w-full overflow-hidden rounded-sm"
+            style=(format!("aspect-ratio:1024/1280;background-color:{tee_color}")) {
+            img src=(image) alt=(alt) loading="lazy"
+                class="absolute inset-0 h-full w-full object-cover";
+        }
+    }
+}
+
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        // Storefront
+        .route("/", get(home::home))
+        .route("/shop", get(shop::shop_index))
+        .route("/shop/{slug}", get(shop::product_detail))
+        .route("/manifesto", get(pages::manifesto))
+        .route("/journal", get(pages::journal))
+        .route("/api/checkout", post(shop::checkout))
+        .route("/events", get(events::events))
+        // Auth
+        .route("/auth", get(auth_page::login_page).post(auth_page::login_submit))
+        .route("/auth/logout", get(auth_page::logout))
+        // Admin (guarded by the AdminUser extractor inside each handler)
+        .route("/admin", get(admin::dashboard))
+        .route("/admin/printify", get(admin::printify_page))
+        .route("/admin/printify/sync", get(admin::printify_sync_stream))
+        // Webhooks
+        .route("/api/webhooks/printify", post(webhooks::printify))
+        .route("/api/webhooks/shopify", post(webhooks::shopify))
+        // Static assets (CSS, vendored JS, images, favicon)
+        .nest_service("/static", ServeDir::new("static"))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}

@@ -1,0 +1,42 @@
+[package]
+name = "rbe"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+axum = "0.8"
+argon2 = "0.5.3"
+base64 = "0.23.0"
+dotenvy = "0.15.7"
+futures-core = "0.3.33"
+hex = "0.4.3"
+hmac = "0.12"
+jsonwebtoken = "9"
+maud = "0.26"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Pinned to 0.40: 0.41 reorganized the agent/prompt API. This is the
+# scaffold's baseline; revisit when we build the agent out.
+rig = { package = "rig-core", version = "=0.40.0" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10"
+subtle = "2.6.1"
+surrealdb = { version = "2", default-features = false, features = ["kv-surrealkv"] }
+thiserror = "2.0.19"
+time = { version = "0.3.54", features = ["formatting", "parsing", "serde"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1.19", features = ["sync"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip", "cors"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.24.0", features = ["v4"] }
+
+# Dev builds: drop debuginfo. surrealdb-core is enormous; debuginfo=2 makes
+# LLVM run out of memory on this machine. This keeps peak memory sane.
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 1

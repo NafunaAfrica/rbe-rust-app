@@ -1,0 +1,18 @@
+# Rust build output
+/target
+
+# Local secrets — never commit
+.env
+
+# Embedded SurrealDB data
+/data
+
+# Downloaded build tools (Tailwind standalone CLI)
+/tools
+
+# Reference material (the original Lovable export)
+/reference
+
+# OS
+Thumbs.db
+.DS_Store
