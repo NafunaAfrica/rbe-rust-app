@@ -36,6 +36,70 @@ pub fn tee_mockup(image: &str, alt: &str, tee_color: &str) -> Markup {
     }
 }
 
+/// TEMPORARY diagnostic (build marker: diag-1). Reports how each table reads back
+/// on the live volume + probes a specific email. No PII returned (emails masked to
+/// domain + hash length only). Remove once the prod login issue is resolved.
+async fn diag(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::Json<serde_json::Value> {
+    use serde_json::json;
+    let db = state.db();
+    async fn tbl(
+        db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
+        table: &str,
+    ) -> serde_json::Value {
+        match db.query(format!("SELECT * FROM {table}")).await {
+            Ok(mut r) => match r.take::<Vec<serde_json::Value>>(0) {
+                Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
+                Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
+            },
+            Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
+        }
+    }
+
+    let mut probe = json!(null);
+    if let Some(email) = q.get("email") {
+        let em = email.trim().to_lowercase();
+        let all: Vec<serde_json::Value> = match db.query("SELECT * FROM customer").await {
+            Ok(mut r) => r.take::<Vec<serde_json::Value>>(0).unwrap_or_default(),
+            Err(_) => vec![],
+        };
+        let found = all
+            .iter()
+            .find(|c| c.get("email").and_then(|e| e.as_str()) == Some(em.as_str()));
+        let where_status = match db
+            .query("SELECT * FROM customer WHERE email = $e")
+            .bind(("e", em.clone()))
+            .await
+        {
+            Ok(mut r) => match r.take::<Vec<serde_json::Value>>(0) {
+                Ok(v) => format!("ok:{}", v.len()),
+                Err(e) => format!("take-err:{e}"),
+            },
+            Err(e) => format!("query-err:{e}"),
+        };
+        probe = json!({
+            "select_star_total": all.len() as i64,
+            "found_in_select_star": found.is_some(),
+            "password_hash_len": found.and_then(|c| c.get("password_hash")).and_then(|h| h.as_str()).map(|s| s.len() as i64),
+            "where_lookup": where_status,
+            "row_keys": found.and_then(|c| c.as_object()).map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        });
+    }
+
+    axum::Json(json!({
+        "build": "diag-1",
+        "counts": {
+            "customer": tbl(db, "customer").await,
+            "staff": tbl(db, "staff").await,
+            "product": tbl(db, "product").await,
+            "post": tbl(db, "post").await,
+        },
+        "probe": probe,
+    }))
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         // Health check (Coolify probes this inside the container)
@@ -48,6 +112,7 @@ pub fn router(state: AppState) -> Router {
         .route("/journal", get(blog::journal))
         .route("/journal/{slug}", get(blog::article))
         .route("/api/checkout", post(shop::checkout))
+        .route("/api/_diag", get(diag))
         .route("/events", get(events::events))
         // Customer accounts
         .route("/account", get(account::account_page))
