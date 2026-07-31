@@ -211,6 +211,22 @@ pub async fn upsert_order(db: &Surreal<Db>, order: &crate::models::Order) -> any
     Ok(())
 }
 
+/// Register a new customer (shopper). Fails if the email already exists.
+pub async fn create_customer(
+    db: &Surreal<Db>,
+    email: &str,
+    password_hash: &str,
+    name: Option<&str>,
+) -> anyhow::Result<()> {
+    db.query("CREATE customer CONTENT { email: $email, password_hash: $hash, name: $name, created_at: time::now() }")
+        .bind(("email", email.trim().to_lowercase()))
+        .bind(("hash", password_hash.to_string()))
+        .bind(("name", name.map(|s| s.to_string())))
+        .await?
+        .check()?;
+    Ok(())
+}
+
 /// Create a new staff member (used by the admin "Team" screen).
 pub async fn create_staff(
     db: &Surreal<Db>,

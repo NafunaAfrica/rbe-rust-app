@@ -1,5 +1,6 @@
 //! Web layer: HTML pages (Maud), the storefront/admin handlers, and the router.
 
+pub mod account;
 pub mod admin;
 pub mod analytics;
 pub mod auth_page;
@@ -48,6 +49,11 @@ pub fn router(state: AppState) -> Router {
         .route("/journal/{slug}", get(blog::article))
         .route("/api/checkout", post(shop::checkout))
         .route("/events", get(events::events))
+        // Customer accounts
+        .route("/account", get(account::account_page))
+        .route("/account/register", get(account::register_page).post(account::register_submit))
+        .route("/account/login", get(account::login_page).post(account::login_submit))
+        .route("/account/logout", get(account::logout))
         // Auth
         .route("/auth", get(auth_page::login_page).post(auth_page::login_submit))
         .route("/auth/logout", get(auth_page::logout))

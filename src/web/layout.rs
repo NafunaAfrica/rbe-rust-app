@@ -67,6 +67,7 @@ fn header(nav: Nav) -> Markup {
                     (link("/shop", "Shop", nav == Nav::Shop))
                     (link("/manifesto", "Manifesto", nav == Nav::Manifesto))
                     (link("/journal", "Journal", nav == Nav::Journal))
+                    a href="/account" class="hover:text-[color:var(--hot)]" { "Account" }
                 }
                 button "@click"="$store.cart.open = true"
                     class="relative flex items-center gap-2 rounded-full border border-ink/20 px-3 py-1.5 text-xs uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" {
@@ -80,6 +81,7 @@ fn header(nav: Nav) -> Markup {
                 a href="/shop" { "Shop" }
                 a href="/manifesto" { "Manifesto" }
                 a href="/journal" { "Journal" }
+                a href="/account" { "Account" }
             }
         }
     }
