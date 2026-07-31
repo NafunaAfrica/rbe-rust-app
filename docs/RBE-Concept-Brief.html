@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBE — Technical &amp; Concept Brief</title>
+<style>
+  :root{
+    --ground:#FBF7F1; --surface:#FFFFFF; --surface-2:#F5EEE8;
+    --ink:#171215; --muted:#7A6B72; --hairline:#E7DCD9;
+    --hot:#FF2B8F; --crimson:#E60023; --blush:#FFD7E6;
+    --good:#1F9D57; --amber:#B4791A;
+    --display:'Impact','Haettenschweiler','Arial Narrow',sans-serif;
+    --serif:Georgia,'Times New Roman',serif;
+    --body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono:'Cascadia Code',Consolas,'SF Mono',ui-monospace,monospace;
+    --measure:min(820px,92vw);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#140F13; --surface:#1C151A; --surface-2:#221A20;
+      --ink:#F6EEF1; --muted:#B49BA6; --hairline:#31262E;
+      --hot:#FF4D9E; --crimson:#FF476A; --blush:#3A2430; --good:#42C07C; --amber:#E0A63C;
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#FBF7F1; --surface:#FFFFFF; --surface-2:#F5EEE8;
+    --ink:#171215; --muted:#7A6B72; --hairline:#E7DCD9;
+    --hot:#FF2B8F; --crimson:#E60023; --blush:#FFD7E6; --good:#1F9D57; --amber:#B4791A;
+  }
+  :root[data-theme="dark"]{
+    --ground:#140F13; --surface:#1C151A; --surface-2:#221A20;
+    --ink:#F6EEF1; --muted:#B49BA6; --hairline:#31262E;
+    --hot:#FF4D9E; --crimson:#FF476A; --blush:#3A2430; --good:#42C07C; --amber:#E0A63C;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--body); line-height:1.62; font-size:17px;
+    -webkit-font-smoothing:antialiased; padding:0 0 5rem;
+  }
+  .wrap{width:var(--measure); margin:0 auto;}
+  .eyebrow{font-family:var(--mono); font-size:.72rem; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--hot); font-weight:600;}
+  h1,h2,h3{text-wrap:balance; margin:0; line-height:.96;}
+  .disp{font-family:var(--display); font-weight:400; letter-spacing:.005em; text-transform:uppercase;}
+  p{margin:0;}
+  a{color:var(--hot); text-decoration:none;}
+  .tnum{font-variant-numeric:tabular-nums;}
+
+  /* theme toggle */
+  .toggle{position:fixed; top:14px; right:14px; z-index:10; font-family:var(--mono);
+    font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    background:var(--surface); border:1px solid var(--hairline); border-radius:100px;
+    padding:.4rem .8rem; cursor:pointer;}
+  .toggle:hover{color:var(--hot); border-color:var(--hot);}
+  .toggle:focus-visible{outline:2px solid var(--hot); outline-offset:2px;}
+
+  .mast{border-bottom:2px solid var(--ink);
+    background:radial-gradient(120% 90% at 88% -10%, color-mix(in oklab, var(--hot) 22%, transparent), transparent 60%), var(--ground);}
+  .mast .wrap{padding:2.2rem 0 2.6rem;}
+  .mast-top{display:flex; justify-content:space-between; align-items:baseline; gap:1rem; flex-wrap:wrap;
+    border-bottom:1px solid var(--hairline); padding-bottom:1rem; margin-bottom:2.4rem;}
+  .word{font-family:var(--display); text-transform:uppercase; font-size:1.5rem; letter-spacing:.01em;}
+  .word b{color:var(--hot); font-weight:400;}
+  .mast-meta{font-family:var(--mono); font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); text-align:right;}
+  h1.title{font-size:clamp(3rem,10vw,6.4rem); margin:.4rem 0 0;}
+  h1.title .hot{color:var(--hot);}
+  .dek{font-family:var(--serif); font-style:italic; font-size:clamp(1.25rem,3.2vw,1.7rem);
+    color:var(--ink); max-width:34ch; margin-top:1.3rem; line-height:1.35;}
+
+  section{padding-top:3.4rem;}
+  .sec-head{display:flex; align-items:baseline; gap:1rem; margin-bottom:1.5rem;}
+  .sec-head h2{font-size:clamp(1.7rem,4.5vw,2.5rem);}
+  .sec-head .n{font-family:var(--mono); font-size:.8rem; color:var(--hot); font-weight:600; padding-top:.4rem;}
+  .rule{height:2px; background:var(--ink); border:0; margin:0;}
+  .lead{font-size:1.16rem;}
+  .lead .k{background:linear-gradient(transparent 62%, color-mix(in oklab,var(--hot) 40%, transparent) 0);}
+
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.5rem;}
+  .card{background:var(--surface); border:1px solid var(--hairline); border-radius:4px; padding:1.4rem 1.5rem;}
+  .card.before{border-top:4px solid var(--amber);}
+  .card.after{border-top:4px solid var(--hot);}
+  .card h3{font-size:1.05rem; font-family:var(--mono); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.2rem;}
+  .card .sub{color:var(--muted); font-size:.85rem; margin-bottom:1rem;}
+  .card ul{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:.7rem;}
+  .card li{display:flex; gap:.6rem; font-size:.96rem; line-height:1.4;}
+  .card li .m{flex:0 0 auto; font-family:var(--mono); font-weight:700; line-height:1.3;}
+  .before li .m{color:var(--amber);} .after li .m{color:var(--good);}
+
+  .benefits{display:flex; flex-direction:column; gap:0; margin-top:.5rem; border-top:1px solid var(--hairline);}
+  .benefit{display:grid; grid-template-columns:minmax(9rem,12rem) 1fr; gap:1.4rem;
+    padding:1.4rem 0; border-bottom:1px solid var(--hairline);}
+  .benefit h3{font-family:var(--display); text-transform:uppercase; font-size:1.5rem; color:var(--ink); align-self:start;}
+  .benefit h3 .dot{color:var(--hot);}
+  .benefit p{color:var(--ink);} .benefit p .q{color:var(--muted);}
+
+  figure{margin:1.4rem 0 0; background:var(--surface); border:1px solid var(--hairline); border-radius:6px;
+    padding:1.6rem 1.2rem; overflow-x:auto;}
+  figure svg{display:block; width:100%; height:auto; min-width:480px; max-width:680px; margin:0 auto;}
+  figcaption{font-family:var(--mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); text-align:center; margin-top:1rem;}
+  /* diagram tokens */
+  .n-box{fill:var(--surface-2); stroke:var(--hairline); stroke-width:1.5;}
+  .n-hub{fill:color-mix(in oklab,var(--hot) 10%, var(--surface)); stroke:var(--hot); stroke-width:2;}
+  .n-t{fill:var(--ink); font-family:var(--body); font-weight:700; font-size:14px;}
+  .n-s{fill:var(--muted); font-family:var(--mono); font-size:9.5px; letter-spacing:.04em; text-transform:uppercase;}
+  .edge{stroke:var(--muted); stroke-width:1.6; fill:none;}
+  .e-t{fill:var(--muted); font-family:var(--mono); font-size:9.5px; letter-spacing:.02em;}
+
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:.5rem;}
+  .stat{background:var(--surface-2); border-radius:4px; padding:1.1rem 1.2rem;}
+  .stat .v{font-family:var(--display); font-size:2.2rem; line-height:1; color:var(--hot);}
+  .stat .l{font-size:.85rem; color:var(--muted); margin-top:.4rem;}
+
+  .road{list-style:none; padding:0; margin:1rem 0 0; counter-reset:r;}
+  .road li{counter-increment:r; display:grid; grid-template-columns:2.4rem 1fr; gap:1rem; padding:1.1rem 0; border-bottom:1px solid var(--hairline);}
+  .road li::before{content:counter(r,decimal-leading-zero); font-family:var(--mono); font-weight:700; color:var(--hot); font-size:.95rem; padding-top:.15rem;}
+  .road h3{font-size:1.1rem; margin-bottom:.15rem;}
+  .road .st{font-family:var(--mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; padding:.15rem .5rem; border-radius:100px; margin-left:.5rem; white-space:nowrap;}
+  .st.next{background:color-mix(in oklab,var(--hot) 16%,transparent); color:var(--hot);}
+  .road p{color:var(--muted); font-size:.95rem;}
+
+  .pull{font-family:var(--serif); font-style:italic; font-size:clamp(1.5rem,4vw,2.1rem); line-height:1.3;
+    border-left:3px solid var(--hot); padding:.2rem 0 .2rem 1.4rem; margin:1rem 0 0; color:var(--ink);}
+
+  footer{margin-top:4rem; border-top:2px solid var(--ink);}
+  footer .wrap{padding:2rem 0; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:baseline;}
+  footer .word{font-size:1.15rem;}
+  footer .fine{font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:right;}
+
+  @media (max-width:640px){
+    .cmp{grid-template-columns:1fr;}
+    .stats{grid-template-columns:1fr;}
+    .benefit{grid-template-columns:1fr; gap:.4rem;}
+    .mast-meta,footer .fine{text-align:left;}
+  }
+</style>
+</head>
+<body>
+  <button class="toggle" id="themeToggle" type="button" aria-label="Toggle light or dark theme">Theme</button>
+
+  <header class="mast">
+    <div class="wrap">
+      <div class="mast-top">
+        <div class="word">NAFUNA<b>·</b>AFRICA</div>
+        <div class="mast-meta">
+          Technical &amp; Concept Brief<br>
+          Prepared for RBE — Rich B Energy<br>
+          July 2026 · v1
+        </div>
+      </div>
+      <div class="eyebrow">The platform behind the store</div>
+      <h1 class="title disp">From rented<br>to <span class="hot">owned.</span></h1>
+      <p class="dek">Why we rebuilt the RBE storefront as a custom platform — and what that
+      unlocks for the business next.</p>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <section id="summary">
+      <div class="sec-head"><span class="n">01</span><h2 class="disp">The short version</h2></div>
+      <hr class="rule">
+      <p class="lead" style="margin-top:1.4rem;">
+        RBE started on <strong>Lovable</strong> — a hosted, low-code builder that generates a
+        React site backed by <strong>Supabase</strong>. It got the idea online fast, but you were
+        <span class="k">renting a template</span>: limited to what the platform allows, paying monthly
+        for the privilege, and unable to plug in the tools a real print-on-demand store needs.
+        We rebuilt it as a <strong>custom platform you own outright</strong> — same look, but now the
+        store, the database, and the Shopify + Printify connections are all yours to shape.
+        It is <strong>live today</strong> at <a href="https://tanya.nafuna.africa">tanya.nafuna.africa</a>.
+      </p>
+    </section>
+
+    <section id="change">
+      <div class="sec-head"><span class="n">02</span><h2 class="disp">What actually changed</h2></div>
+      <hr class="rule">
+      <div class="cmp">
+        <div class="card before">
+          <h3>Before</h3>
+          <div class="sub">Lovable + React + Supabase — a hosted builder</div>
+          <ul>
+            <li><span class="m">›</span><span>You rent the platform — monthly fees that climb as the store grows.</span></li>
+            <li><span class="m">›</span><span>Boxed in to the builder's features; new ideas wait on what it supports.</span></li>
+            <li><span class="m">›</span><span>Your customer &amp; order data lives inside someone else's system.</span></li>
+            <li><span class="m">›</span><span>Integrations are shallow — whatever the template exposes, no more.</span></li>
+            <li><span class="m">›</span><span>If the vendor changes terms or prices, you go along with it.</span></li>
+          </ul>
+        </div>
+        <div class="card after">
+          <h3>Now</h3>
+          <div class="sub">Custom build — Rust engine + your own database</div>
+          <ul>
+            <li><span class="m">✓</span><span>You own the code and the data — no per-seat or per-feature ceiling.</span></li>
+            <li><span class="m">✓</span><span>Any feature is on the table; the store bends to the business, not the reverse.</span></li>
+            <li><span class="m">✓</span><span>Customers, orders and content sit in <em>your</em> database.</span></li>
+            <li><span class="m">✓</span><span>Shopify (checkout) and Printify (printing) are wired in directly and deeply.</span></li>
+            <li><span class="m">✓</span><span>Runs as one small, fast server — low, predictable hosting cost.</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="pull">The template got RBE online. Owning the platform is what lets it grow.</p>
+    </section>
+
+    <section id="why">
+      <div class="sec-head"><span class="n">03</span><h2 class="disp">Why it moves the business ahead</h2></div>
+      <hr class="rule">
+      <div class="benefits">
+        <div class="benefit">
+          <h3>Ownership<span class="dot">.</span></h3>
+          <p>The whole store — code, data, design — belongs to RBE. No monthly platform tax that
+          grows with success, and nothing that can be switched off or priced up from the outside.
+          <span class="q">What you build, you keep.</span></p>
+        </div>
+        <div class="benefit">
+          <h3>Flexibility<span class="dot">.</span></h3>
+          <p>Because it's custom, there is no "the platform doesn't do that." A loyalty scheme, a
+          members' drop, a wholesale portal, a new payment method — each becomes a build, not a
+          dead end. <span class="q">The roadmap is yours to write.</span></p>
+        </div>
+        <div class="benefit">
+          <h3>Deeper<br>integrations<span class="dot">.</span></h3>
+          <p>Shopify handles secure checkout; Printify prints and ships. We talk to both of them
+          directly, so orders, fulfilment and tracking can flow straight back into your own
+          dashboard — the kind of connection a hosted template simply can't reach.</p>
+        </div>
+        <div class="benefit">
+          <h3>Speed<br>&amp; cost<span class="dot">.</span></h3>
+          <p>The site is built in <strong>Rust</strong> and runs as a single lightweight server. Pages
+          render fast for shoppers, and hosting is one small, predictable line item instead of a
+          subscription that scales with your traffic.</p>
+        </div>
+        <div class="benefit">
+          <h3>Your data<span class="dot">.</span></h3>
+          <p>Customers, orders, and sales history are captured in your own database — so analytics,
+          reporting and marketing are built on numbers you control, not exports begged from a
+          third party.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="sec-head"><span class="n">04</span><h2 class="disp">How it fits together</h2></div>
+      <hr class="rule">
+      <p class="lead" style="margin-top:1.4rem;">
+        One RBE-owned server sits at the centre. Shoppers only ever see <strong>tanya.nafuna.africa</strong>;
+        behind it, Shopify takes payment and Printify prints and ships — and every order flows back
+        into your dashboard.
+      </p>
+      <figure>
+        <svg viewBox="0 0 680 470" role="img" aria-label="Architecture: shopper visits the RBE storefront, which reads the catalog from your database, hands checkout to Shopify, receives orders back, Shopify auto-sends to Printify which returns tracking, and the storefront feeds the owner dashboard.">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <!-- edges (drawn first, under nodes) -->
+          <!-- shopper -> storefront -->
+          <path class="edge" marker-end="url(#arrow)" d="M340,70 L340,158"></path>
+          <text class="e-t" x="348" y="118">visits</text>
+          <!-- storefront <-> database -->
+          <path class="edge" marker-end="url(#arrow)" d="M232,205 L200,205"></path>
+          <text class="e-t" x="120" y="165" text-anchor="middle">catalog · orders · content</text>
+          <!-- storefront -> shopify -->
+          <path class="edge" marker-end="url(#arrow)" d="M448,188 L500,152"></path>
+          <text class="e-t" x="452" y="150">checkout</text>
+          <!-- shopify -> storefront (order back) -->
+          <path class="edge" marker-end="url(#arrow)" d="M500,176 L448,212"></path>
+          <text class="e-t" x="452" y="230">order back</text>
+          <!-- shopify -> printify -->
+          <path class="edge" marker-end="url(#arrow)" d="M585,182 L585,258"></path>
+          <text class="e-t" x="593" y="224">auto-sent</text>
+          <!-- printify -> storefront (tracking) -->
+          <path class="edge" marker-end="url(#arrow)" d="M500,300 L450,250"></path>
+          <text class="e-t" x="470" y="300">tracking</text>
+          <!-- storefront -> dashboard -->
+          <path class="edge" marker-end="url(#arrow)" d="M340,252 L340,362"></path>
+          <text class="e-t" x="348" y="312">sales · analytics</text>
+
+          <!-- nodes -->
+          <!-- shopper -->
+          <rect class="n-box" x="270" y="26" width="140" height="44" rx="22"></rect>
+          <text class="n-t" x="340" y="53" text-anchor="middle">Shopper</text>
+
+          <!-- storefront hub -->
+          <rect class="n-hub" x="230" y="160" width="220" height="92" rx="10"></rect>
+          <text class="n-t" x="340" y="196" text-anchor="middle" font-size="15">RBE Storefront</text>
+          <text class="n-s" x="340" y="216" text-anchor="middle">Rust · one server you own</text>
+          <text class="n-s" x="340" y="232" text-anchor="middle">tanya.nafuna.africa</text>
+
+          <!-- database -->
+          <rect class="n-box" x="20" y="176" width="180" height="60" rx="8"></rect>
+          <text class="n-t" x="110" y="202" text-anchor="middle">Your database</text>
+          <text class="n-s" x="110" y="220" text-anchor="middle">catalog · orders · blog</text>
+
+          <!-- shopify -->
+          <rect class="n-box" x="500" y="124" width="168" height="54" rx="8"></rect>
+          <text class="n-t" x="584" y="147" text-anchor="middle">Shopify</text>
+          <text class="n-s" x="584" y="164" text-anchor="middle">secure payments</text>
+
+          <!-- printify -->
+          <rect class="n-box" x="500" y="258" width="168" height="54" rx="8"></rect>
+          <text class="n-t" x="584" y="281" text-anchor="middle">Printify</text>
+          <text class="n-s" x="584" y="298" text-anchor="middle">print &amp; ship</text>
+
+          <!-- dashboard -->
+          <rect class="n-box" x="230" y="364" width="220" height="64" rx="8"></rect>
+          <text class="n-t" x="340" y="391" text-anchor="middle">Owner dashboard</text>
+          <text class="n-s" x="340" y="409" text-anchor="middle">sales · analytics · fulfilment</text>
+        </svg>
+        <figcaption>The RBE platform — one owned core, connected directly to Shopify &amp; Printify</figcaption>
+      </figure>
+    </section>
+
+    <section id="live">
+      <div class="sec-head"><span class="n">05</span><h2 class="disp">Live today</h2></div>
+      <hr class="rule">
+      <div class="stats">
+        <div class="stat"><div class="v tnum">11</div><div class="l">Signature designs, served from your own database</div></div>
+        <div class="stat"><div class="v tnum">2</div><div class="l">Deep integrations wired in — Shopify &amp; Printify</div></div>
+        <div class="stat"><div class="v tnum">1</div><div class="l">Small, fast server — one predictable hosting cost</div></div>
+      </div>
+      <p style="margin-top:1.4rem; color:var(--muted);">
+        The storefront, manifesto and shop are live and on-brand; the catalog is driven from your
+        database; checkout hands off to Shopify; and Printify is connected for fulfilment. Everything
+        below builds on this foundation.
+      </p>
+    </section>
+
+    <section id="next">
+      <div class="sec-head"><span class="n">06</span><h2 class="disp">What's next</h2></div>
+      <hr class="rule">
+      <ol class="road">
+        <li><div>
+          <h3>Orders &amp; fulfilment in one place<span class="st next">Building</span></h3>
+          <p>Every Shopify sale and its Printify tracking flows back into your dashboard — no logging
+          into three tools to see what sold and what shipped.</p>
+        </div></li>
+        <li><div>
+          <h3>Owner dashboard with analytics<span class="st next">Building</span></h3>
+          <p>Revenue, orders, best-sellers and site traffic — your numbers, visualised and updated
+          live, without exporting spreadsheets from anyone else.</p>
+        </div></li>
+        <li><div>
+          <h3>Customer accounts<span class="st next">Building</span></h3>
+          <p>Shoppers sign in on your own domain to see order history and tracking — building a direct
+          relationship with the RBE audience.</p>
+        </div></li>
+        <li><div>
+          <h3>A real journal / blog<span class="st next">Building</span></h3>
+          <p>Publish essays and drops from an in-house editor — content that's yours, good for the
+          brand and for search, with no extra subscription.</p>
+        </div></li>
+        <li><div>
+          <h3>Roles for owner &amp; team<span class="st next">Building</span></h3>
+          <p>Separate, secure logins for the business owner and the studio — everyone sees exactly
+          what they need, and nothing they don't.</p>
+        </div></li>
+      </ol>
+    </section>
+
+    <section id="close">
+      <div class="sec-head"><span class="n">07</span><h2 class="disp">The bottom line</h2></div>
+      <hr class="rule">
+      <p class="lead" style="margin-top:1.4rem;">
+        A hosted template is a great way to <em>start</em>. But a growing brand outgrows the box it was
+        started in. RBE now runs on a platform it <strong>owns</strong> — faster, cheaper to run, and open
+        to any idea the business wants to chase. The store you can see today is the foundation; the
+        roadmap above is what owning it makes possible.
+      </p>
+    </section>
+
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <div class="word">NAFUNA<b style="color:var(--hot)">·</b>AFRICA</div>
+      <div class="fine">Custom software · Built to own<br>tanya.nafuna.africa · nafunatvchannel@gmail.com</div>
+    </div>
+  </footer>
+
+  <script>
+    (function(){
+      var btn = document.getElementById('themeToggle');
+      var root = document.documentElement;
+      btn.addEventListener('click', function(){
+        var cur = root.getAttribute('data-theme');
+        if(!cur){ cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+        root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+      });
+    })();
+  </script>
+</body>
+</html>
