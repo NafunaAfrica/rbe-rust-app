@@ -1,8 +1,10 @@
 //! Web layer: HTML pages (Maud), the storefront/admin handlers, and the router.
 
 pub mod admin;
+pub mod analytics;
 pub mod auth_page;
 pub mod blog;
+pub mod charts;
 pub mod home;
 pub mod layout;
 pub mod orders;
@@ -65,6 +67,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/webhooks/shopify", post(webhooks::shopify))
         // Static assets (CSS, vendored JS, images, favicon)
         .nest_service("/static", ServeDir::new("static"))
+        // First-party page-view analytics (records public GET page loads)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            analytics::track_pageviews,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

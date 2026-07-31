@@ -51,6 +51,8 @@ async fn define_schema(db: &Surreal<Db>) -> anyhow::Result<()> {
         DEFINE INDEX IF NOT EXISTS post_slug ON post FIELDS slug UNIQUE;
 
         DEFINE TABLE IF NOT EXISTS order SCHEMALESS;
+
+        DEFINE TABLE IF NOT EXISTS pageview SCHEMALESS;
         "#,
     )
     .await?
@@ -172,6 +174,29 @@ pub async fn upsert_post(
     .bind(("pub", published_at))
     .await?
     .check()?;
+    Ok(())
+}
+
+/// Record a page view (first-party analytics). `day` is derived from the
+/// timestamp for cheap per-day grouping.
+pub async fn record_pageview(
+    db: &Surreal<Db>,
+    path: &str,
+    session: &str,
+    referrer: Option<&str>,
+) -> anyhow::Result<()> {
+    let ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let day = ts.get(0..10).unwrap_or("").to_string();
+    db.query("CREATE pageview CONTENT { path: $path, session: $sid, referrer: $ref, ts: $ts, day: $day }")
+        .bind(("path", path.to_string()))
+        .bind(("sid", session.to_string()))
+        .bind(("ref", referrer.map(|s| s.to_string())))
+        .bind(("ts", ts))
+        .bind(("day", day))
+        .await?
+        .check()?;
     Ok(())
 }
 

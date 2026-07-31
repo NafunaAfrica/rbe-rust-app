@@ -19,7 +19,8 @@ use crate::state::AppState;
 use super::layout::{Nav, shell};
 
 /// GET /dashboard — the owner's business view (admins can see it too).
-pub async fn dashboard_owner(user: StaffUser) -> Html<String> {
+pub async fn dashboard_owner(user: StaffUser, State(state): State<AppState>) -> AppResult<Html<String>> {
+    let analytics = super::analytics::dashboard_section(&state).await?;
     let body = html! {
         div class="mx-auto max-w-4xl px-4 py-16" {
             div class="flex items-center justify-between" {
@@ -31,6 +32,8 @@ pub async fn dashboard_owner(user: StaffUser) -> Html<String> {
                 a href="/auth/logout" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "Sign out" }
             }
 
+            div class="mt-8" { (analytics) }
+
             div class="mt-10 grid gap-4 sm:grid-cols-2" {
                 (card("Sales & analytics", "Revenue, orders and traffic — coming in this build.", "#"))
                 (card("Orders & fulfilment", "Every Shopify order and its Printify tracking, in one place.", "/dashboard/orders"))
@@ -41,7 +44,7 @@ pub async fn dashboard_owner(user: StaffUser) -> Html<String> {
             }
         }
     };
-    Html(shell("Dashboard — RBE", "RBE owner dashboard.", Nav::None, body).into_string())
+    Ok(Html(shell("Dashboard — RBE", "RBE owner dashboard.", Nav::None, body).into_string()))
 }
 
 fn card(title: &str, desc: &str, href: &str) -> Markup {
