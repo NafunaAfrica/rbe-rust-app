@@ -65,12 +65,11 @@ async fn define_schema(db: &Surreal<Db>) -> anyhow::Result<()> {
 /// exists we leave it untouched (change it in-app, not via env).
 async fn seed_staff(db: &Surreal<Db>, cfg: &crate::config::Config) -> anyhow::Result<()> {
     let email = cfg.admin_email.trim().to_lowercase();
-    let existing: Option<crate::models::Staff> = db
-        .query("SELECT * FROM staff WHERE email = $e LIMIT 1")
-        .bind(("e", email.clone()))
-        .await?
-        .take(0)?;
-    if existing.is_some() {
+    // Match in Rust rather than `WHERE email = $e`: the production volume's email
+    // index is unreliable for lookups (see auth.rs), and using it here would make
+    // us re-seed a duplicate admin on every boot.
+    let all: Vec<crate::models::Staff> = db.query("SELECT * FROM staff").await?.take(0)?;
+    if all.iter().any(|s| s.email == email) {
         return Ok(());
     }
     let hash = crate::auth::hash_password(&cfg.admin_password)?;

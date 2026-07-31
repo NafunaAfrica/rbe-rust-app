@@ -92,33 +92,39 @@ fn decode_token(cfg: &Config, token: &str) -> Option<Claims> {
 // Authenticate against the database
 // ---------------------------------------------------------------------------
 
+// NOTE: we look accounts up with a plain `SELECT *` and match the email in Rust
+// rather than `WHERE email = $e`. On the production volume the unique email
+// indexes were left in a bad state by an earlier SurrealDB version, so
+// index-backed `WHERE` lookups return nothing (writes / uniqueness still work,
+// which is why registration succeeds but login couldn't find the account). Full
+// scans are fine at this scale and don't touch the index. The UNIQUE index is
+// kept purely to enforce no-duplicate-signups on the write path.
+
 /// Returns `(email, role)` on success.
 pub async fn authenticate_staff(state: &AppState, email: &str, pw: &str) -> Option<(String, String)> {
     let email = email.trim().to_lowercase();
-    let found: Option<Staff> = state
+    let all: Vec<Staff> = state
         .db()
-        .query("SELECT * FROM staff WHERE email = $e LIMIT 1")
-        .bind(("e", email))
+        .query("SELECT * FROM staff")
         .await
         .ok()?
         .take(0)
         .ok()?;
-    let s = found?;
+    let s = all.into_iter().find(|s| s.email == email)?;
     verify_password(pw, &s.password_hash).then_some((s.email, s.role))
 }
 
 /// Returns the customer email on success.
 pub async fn authenticate_customer(state: &AppState, email: &str, pw: &str) -> Option<String> {
     let email = email.trim().to_lowercase();
-    let found: Option<Customer> = state
+    let all: Vec<Customer> = state
         .db()
-        .query("SELECT * FROM customer WHERE email = $e LIMIT 1")
-        .bind(("e", email))
+        .query("SELECT * FROM customer")
         .await
         .ok()?
         .take(0)
         .ok()?;
-    let c = found?;
+    let c = all.into_iter().find(|c| c.email == email)?;
     verify_password(pw, &c.password_hash).then_some(c.email)
 }
 
