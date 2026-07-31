@@ -147,6 +147,19 @@ pub fn claims_from(parts: &Parts, cfg: &Config, cookie: &str) -> Option<Claims> 
     cookie_from_headers(parts, cookie).and_then(|t| decode_token(cfg, &t))
 }
 
+/// Convenience for JSON API handlers that hold a `HeaderMap` rather than
+/// request `Parts`: returns the signed-in shopper's email, if any.
+pub fn customer_email(headers: &axum::http::HeaderMap, cfg: &Config) -> Option<String> {
+    let raw = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+    let token = raw
+        .split(';')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| k.trim() == CUSTOMER_COOKIE)
+        .map(|(_, v)| v.trim().to_string())?;
+    let claims = decode_token(cfg, &token)?;
+    (claims.role == ROLE_CUSTOMER).then_some(claims.sub)
+}
+
 // ---------------------------------------------------------------------------
 // Extractors
 // ---------------------------------------------------------------------------

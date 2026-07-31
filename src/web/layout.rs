@@ -24,7 +24,8 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
                 meta property="og:title" content=(title);
                 meta property="og:description" content=(description);
                 meta name="twitter:card" content="summary_large_image";
-                link rel="icon" href="/static/favicon.ico" type="image/x-icon";
+                link rel="icon" href="/static/img/fav.svg" type="image/svg+xml";
+                link rel="alternate icon" href="/static/favicon.ico" type="image/x-icon";
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous";
                 link rel="stylesheet"
@@ -196,6 +197,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.store('cart', {
     items: JSON.parse(localStorage.getItem('rbe_cart_v2') || '[]'),
     open: false,
+    init(){ if (location.hash === '#cart') this.open = true; },
     save(){ localStorage.setItem('rbe_cart_v2', JSON.stringify(this.items)); },
     add(item){
       const i = this.items.findIndex(x => x.id === item.id);
@@ -217,6 +219,12 @@ document.addEventListener('alpine:init', () => {
         body: JSON.stringify({ items: this.items.map(i => ({ slug: i.slug, size: i.size, qty: i.qty })) })
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && data.login_required){
+        // Bounce to sign-in, then return to the shop with the bag re-opened.
+        const next = encodeURIComponent(location.pathname + '#cart');
+        window.location = '/account/login?next=' + next;
+        return;
+      }
       if (!res.ok){ alert(data.error || 'Checkout failed. Please try again.'); return; }
       const u = new URL(data.url); u.searchParams.set('channel','online_store');
       window.location = u.toString();
