@@ -45,57 +45,47 @@ async fn diag(
 ) -> axum::Json<serde_json::Value> {
     use serde_json::json;
     let db = state.db();
-    async fn tbl(
-        db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
-        table: &str,
-    ) -> serde_json::Value {
-        match db.query(format!("SELECT * FROM {table}")).await {
-            Ok(mut r) => match r.take::<Vec<serde_json::Value>>(0) {
-                Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
-                Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
-            },
-            Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
-        }
-    }
+    // Typed reads — exactly the path authenticate_* uses.
+    let customer = match db.query("SELECT * FROM customer").await {
+        Ok(mut r) => match r.take::<Vec<crate::models::Customer>>(0) {
+            Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
+            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
+        },
+        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
+    };
+    let staff = match db.query("SELECT * FROM staff").await {
+        Ok(mut r) => match r.take::<Vec<crate::models::Staff>>(0) {
+            Ok(v) => json!({ "n": v.len() as i64, "emails": v.iter().map(|s| s.email.clone()).collect::<Vec<_>>(), "status": "ok" }),
+            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
+        },
+        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
+    };
+    let product = match db.query("SELECT * FROM product").await {
+        Ok(mut r) => match r.take::<Vec<crate::models::Product>>(0) {
+            Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
+            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
+        },
+        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
+    };
 
     let mut probe = json!(null);
     if let Some(email) = q.get("email") {
         let em = email.trim().to_lowercase();
-        let all: Vec<serde_json::Value> = match db.query("SELECT * FROM customer").await {
-            Ok(mut r) => r.take::<Vec<serde_json::Value>>(0).unwrap_or_default(),
+        let all: Vec<crate::models::Customer> = match db.query("SELECT * FROM customer").await {
+            Ok(mut r) => r.take(0).unwrap_or_default(),
             Err(_) => vec![],
         };
-        let found = all
-            .iter()
-            .find(|c| c.get("email").and_then(|e| e.as_str()) == Some(em.as_str()));
-        let where_status = match db
-            .query("SELECT * FROM customer WHERE email = $e")
-            .bind(("e", em.clone()))
-            .await
-        {
-            Ok(mut r) => match r.take::<Vec<serde_json::Value>>(0) {
-                Ok(v) => format!("ok:{}", v.len()),
-                Err(e) => format!("take-err:{e}"),
-            },
-            Err(e) => format!("query-err:{e}"),
-        };
+        let found = all.iter().find(|c| c.email == em);
         probe = json!({
             "select_star_total": all.len() as i64,
-            "found_in_select_star": found.is_some(),
-            "password_hash_len": found.and_then(|c| c.get("password_hash")).and_then(|h| h.as_str()).map(|s| s.len() as i64),
-            "where_lookup": where_status,
-            "row_keys": found.and_then(|c| c.as_object()).map(|o| o.keys().cloned().collect::<Vec<_>>()),
+            "found": found.is_some(),
+            "password_hash_len": found.map(|c| c.password_hash.len() as i64),
         });
     }
 
     axum::Json(json!({
-        "build": "diag-1",
-        "counts": {
-            "customer": tbl(db, "customer").await,
-            "staff": tbl(db, "staff").await,
-            "product": tbl(db, "product").await,
-            "post": tbl(db, "post").await,
-        },
+        "build": "diag-2-typed",
+        "counts": { "customer": customer, "staff": staff, "product": product },
         "probe": probe,
     }))
 }

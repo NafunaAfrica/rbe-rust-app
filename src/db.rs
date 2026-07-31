@@ -17,6 +17,7 @@ pub async fn connect(cfg: &crate::config::Config) -> anyhow::Result<Surreal<Db>>
     let db = Surreal::new::<SurrealKv>(&cfg.data_dir).await?;
     db.use_ns(NS).use_db(DB).await?;
     define_schema(&db).await?;
+    repair_broken_tables(&db).await?;
     seed_products(&db).await?;
     seed_shop_cache(&db).await?;
     seed_staff(&db, cfg).await?;
@@ -57,6 +58,50 @@ async fn define_schema(db: &Surreal<Db>) -> anyhow::Result<()> {
     )
     .await?
     .check()?;
+    Ok(())
+}
+
+/// Self-heal tables whose on-disk records were written by an incompatible
+/// SurrealDB storage version and now fail to deserialize (e.g. "Invalid
+/// revision" errors). This silently broke login: registration wrote fine but
+/// `authenticate_*` could never read an account back. `customer`/`staff` hold
+/// only disposable, re-seedable data (the admin is re-seeded from env right
+/// after), so when a typed read fails we drop and recreate the table clean.
+/// A healthy table (including an empty one) reads fine and is left untouched.
+async fn repair_broken_tables(db: &Surreal<Db>) -> anyhow::Result<()> {
+    // customer
+    let customer_ok = match db.query("SELECT * FROM customer").await {
+        Ok(mut r) => r.take::<Vec<crate::models::Customer>>(0).is_ok(),
+        Err(_) => false,
+    };
+    if !customer_ok {
+        tracing::warn!("customer table unreadable (storage version mismatch) — recreating");
+        db.query(
+            "REMOVE TABLE IF EXISTS customer; \
+             DEFINE TABLE customer SCHEMALESS; \
+             DEFINE FIELD email ON customer TYPE string; \
+             DEFINE INDEX customer_email ON customer FIELDS email UNIQUE;",
+        )
+        .await?
+        .check()?;
+    }
+
+    // staff
+    let staff_ok = match db.query("SELECT * FROM staff").await {
+        Ok(mut r) => r.take::<Vec<crate::models::Staff>>(0).is_ok(),
+        Err(_) => false,
+    };
+    if !staff_ok {
+        tracing::warn!("staff table unreadable (storage version mismatch) — recreating");
+        db.query(
+            "REMOVE TABLE IF EXISTS staff; \
+             DEFINE TABLE staff SCHEMALESS; \
+             DEFINE FIELD email ON staff TYPE string; \
+             DEFINE INDEX staff_email ON staff FIELDS email UNIQUE;",
+        )
+        .await?
+        .check()?;
+    }
     Ok(())
 }
 
