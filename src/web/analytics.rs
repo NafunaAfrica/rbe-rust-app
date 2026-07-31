@@ -107,18 +107,27 @@ pub async fn dashboard_section(state: &AppState) -> AppResult<Markup> {
     }
     let since = days.first().map(|(k, _)| k.clone()).unwrap_or_default();
 
+    // Analytics must never take the dashboard down — degrade to empty on any
+    // read error (e.g. a transient storage-engine hiccup).
     let views: Vec<PageviewRow> = state
         .db()
         .query("SELECT session, day FROM pageview WHERE day >= $since")
         .bind(("since", since))
-        .await?
-        .take(0)?;
-    let orders: Vec<OrderAgg> = state.db().query("SELECT total FROM order").await?.take(0)?;
+        .await
+        .and_then(|mut r| r.take(0))
+        .unwrap_or_default();
+    let orders: Vec<OrderAgg> = state
+        .db()
+        .query("SELECT total FROM order")
+        .await
+        .and_then(|mut r| r.take(0))
+        .unwrap_or_default();
     let currency: Vec<String> = state
         .db()
         .query("SELECT VALUE currency FROM order LIMIT 1")
-        .await?
-        .take(0)?;
+        .await
+        .and_then(|mut r| r.take(0))
+        .unwrap_or_default();
     let currency = currency.into_iter().next().unwrap_or_else(|| "USD".into());
 
     // Aggregate.
