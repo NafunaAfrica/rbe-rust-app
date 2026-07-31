@@ -28,6 +28,8 @@ pub async fn dashboard(_admin: AdminUser) -> Html<String> {
             }
             div class="mt-10 grid gap-4 sm:grid-cols-2" {
                 (admin_card("Printify sync", "Push RBE tee designs to Printify as live print-on-demand listings.", "/admin/printify"))
+                (admin_card("Team", "Create owner accounts and manage who can sign in.", "/admin/team"))
+                (admin_card("Owner dashboard", "The business view: sales, orders and the journal.", "/dashboard"))
                 (admin_card("Agent (soon)", "The rig-powered site agent will manage products, sync, and content from here.", "#"))
             }
         }

@@ -60,31 +60,3 @@ pub async fn manifesto() -> Html<String> {
     };
     Html(shell("Manifesto — RBE Rich B Energy", "The RBE manifesto. Soft life. Hard lines. For every kind of woman, for ours first.", Nav::Manifesto, body).into_string())
 }
-
-const POSTS: &[(&str, &str, &str)] = &[
-    ("On being called 'intimidating' one more time", "Essay", "This week"),
-    ("The soft-life spreadsheet that saved my summer", "Money", "Last week"),
-    ("A playlist for closing tabs and closing deals", "Sound", "Aug"),
-    ("Five Black-woman-owned tailors we love", "Guide", "Jul"),
-];
-
-pub async fn journal() -> Html<String> {
-    let body = html! {
-        div class="mx-auto max-w-6xl px-4 py-20 md:px-8" {
-            div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "Dispatches" }
-            h1 class="mt-2 font-display text-6xl md:text-8xl" { "JOURNAL" }
-            div class="mt-12 grid gap-6 md:grid-cols-2" {
-                @for (title, tag, date) in POSTS {
-                    article class="rounded-lg border border-ink/10 bg-white p-8" {
-                        div class="flex items-center justify-between text-xs uppercase tracking-widest opacity-60" {
-                            span { (tag) } span { (date) }
-                        }
-                        h2 class="mt-4 font-serif-display text-3xl leading-snug" { (title) }
-                        div class="mt-6 text-xs uppercase tracking-widest text-[color:var(--hot)]/70" { "Coming soon" }
-                    }
-                }
-            }
-        }
-    };
-    Html(shell("Journal — RBE", "Essays, playlists, and dispatches from the RBE club.", Nav::Journal, body).into_string())
-}

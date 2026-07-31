@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::from_env();
 
     // Embedded SurrealDB (SurrealKV) — created/seeded on first boot.
-    let db = db::connect(&cfg.data_dir).await?;
+    let db = db::connect(&cfg).await?;
     tracing::info!(data_dir = %cfg.data_dir, "surrealdb ready");
 
     // Agent scaffold (rig). Logged so the operator knows if it's live.

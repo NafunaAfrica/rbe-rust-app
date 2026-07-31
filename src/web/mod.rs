@@ -2,10 +2,13 @@
 
 pub mod admin;
 pub mod auth_page;
+pub mod blog;
 pub mod home;
 pub mod layout;
+pub mod orders;
 pub mod pages;
 pub mod shop;
+pub mod staff;
 
 use axum::Router;
 use axum::routing::{get, post};
@@ -39,14 +42,22 @@ pub fn router(state: AppState) -> Router {
         .route("/shop", get(shop::shop_index))
         .route("/shop/{slug}", get(shop::product_detail))
         .route("/manifesto", get(pages::manifesto))
-        .route("/journal", get(pages::journal))
+        .route("/journal", get(blog::journal))
+        .route("/journal/{slug}", get(blog::article))
         .route("/api/checkout", post(shop::checkout))
         .route("/events", get(events::events))
         // Auth
         .route("/auth", get(auth_page::login_page).post(auth_page::login_submit))
         .route("/auth/logout", get(auth_page::logout))
+        // Owner business dashboard (admin or owner)
+        .route("/dashboard", get(staff::dashboard_owner))
+        .route("/dashboard/orders", get(orders::orders_list))
+        .route("/dashboard/posts", get(blog::posts_list).post(blog::post_save))
+        .route("/dashboard/posts/new", get(blog::post_new))
+        .route("/dashboard/posts/{slug}/edit", get(blog::post_edit))
         // Admin (guarded by the AdminUser extractor inside each handler)
         .route("/admin", get(admin::dashboard))
+        .route("/admin/team", get(staff::team_page).post(staff::team_create))
         .route("/admin/printify", get(admin::printify_page))
         .route("/admin/printify/sync", get(admin::printify_sync_stream))
         // Webhooks

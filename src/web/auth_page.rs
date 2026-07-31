@@ -52,7 +52,8 @@ pub struct LoginForm {
 }
 
 pub async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Response {
-    if !auth::verify_credentials(state.cfg(), &form.email, &form.password) {
+    let Some((email, role)) = auth::authenticate_staff(&state, &form.email, &form.password).await
+    else {
         return (
             StatusCode::UNAUTHORIZED,
             Html(
@@ -66,21 +67,25 @@ pub async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginF
             ),
         )
             .into_response();
-    }
+    };
 
-    match auth::issue_token(state.cfg(), &form.email) {
-        Ok(token) => (
-            [(header::SET_COOKIE, auth::session_cookie(&token))],
-            Redirect::to("/admin"),
-        )
-            .into_response(),
+    match auth::issue_token(state.cfg(), &email, &role) {
+        Ok(token) => {
+            // Admins land on the control panel; owners on the business dashboard.
+            let dest = if role == auth::ROLE_ADMIN { "/admin" } else { "/dashboard" };
+            (
+                [(header::SET_COOKIE, auth::session_cookie(auth::STAFF_COOKIE, &token))],
+                Redirect::to(dest),
+            )
+                .into_response()
+        }
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
 pub async fn logout() -> Response {
     (
-        [(header::SET_COOKIE, auth::clear_cookie())],
+        [(header::SET_COOKIE, auth::clear_cookie(auth::STAFF_COOKIE))],
         Redirect::to("/"),
     )
         .into_response()

@@ -59,8 +59,78 @@ pub async fn shopify(
     }
 
     let topic = headers.get("x-shopify-topic").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
-    bump(&state, &format!("shopify:{topic}")).await;
+
+    // Order events are ingested into our own DB (powers the dashboard & customer
+    // order history). Product/inventory events just bust the storefront cache.
+    if topic.starts_with("orders/") {
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body) {
+            if let Some(order) = parse_shopify_order(&v) {
+                if let Err(e) = db::upsert_order(state.db(), &order).await {
+                    tracing::error!(error = %e, "failed to ingest shopify order");
+                }
+            }
+        }
+    } else {
+        bump(&state, &format!("shopify:{topic}")).await;
+    }
     (StatusCode::OK, "ok")
+}
+
+/// Map a Shopify order webhook payload onto our `Order` model. Tracking is read
+/// from the first fulfilment that carries it (Printify ships → Shopify records
+/// the tracking → this webhook delivers it).
+fn parse_shopify_order(v: &serde_json::Value) -> Option<crate::models::Order> {
+    use crate::models::{Order, OrderLine};
+    let id = v.get("id")?;
+    let shopify_order_id = match id {
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => s.clone(),
+        _ => return None,
+    };
+
+    let str_of = |key: &str| v.get(key).and_then(|x| x.as_str()).map(String::from);
+
+    let line_items = v
+        .get("line_items")
+        .and_then(|l| l.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|li| OrderLine {
+                    title: li.get("title").and_then(|t| t.as_str()).unwrap_or("Item").to_string(),
+                    quantity: li.get("quantity").and_then(|q| q.as_i64()).unwrap_or(1),
+                    price: li.get("price").and_then(|p| p.as_str()).map(String::from),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // First fulfilment carrying tracking info.
+    let fulfilment = v
+        .get("fulfillments")
+        .and_then(|f| f.as_array())
+        .and_then(|arr| arr.iter().find(|f| f.get("tracking_number").is_some()));
+    let tracking_number = fulfilment.and_then(|f| f.get("tracking_number").and_then(|t| t.as_str())).map(String::from);
+    let tracking_url = fulfilment
+        .and_then(|f| {
+            f.get("tracking_url")
+                .and_then(|t| t.as_str())
+                .or_else(|| f.get("tracking_urls").and_then(|u| u.as_array()).and_then(|a| a.first()).and_then(|u| u.as_str()))
+        })
+        .map(String::from);
+
+    Some(Order {
+        shopify_order_id,
+        number: str_of("name"),
+        email: str_of("email").or_else(|| str_of("contact_email")),
+        currency: str_of("currency").unwrap_or_else(|| "USD".into()),
+        total: str_of("total_price").unwrap_or_default(),
+        financial_status: str_of("financial_status"),
+        fulfillment_status: str_of("fulfillment_status"),
+        line_items,
+        tracking_url,
+        tracking_number,
+        created_at: str_of("created_at"),
+    })
 }
 
 async fn bump(state: &AppState, source: &str) {
