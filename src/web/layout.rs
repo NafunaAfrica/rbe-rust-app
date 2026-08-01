@@ -33,14 +33,35 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
                 link rel="stylesheet" href="/static/app.css";
                 script src="/static/vendor/alpine.min.js" defer {}
                 script src="/static/vendor/htmx.min.js" defer {}
+                (page_loader_script())
                 (cart_store_script())
             }
-            body {
+            body class="page-shell" {
+                (page_loader())
                 div x-data="{}" class="flex min-h-screen flex-col" {
                     (header(nav))
                     main class="flex-1" { (body) }
                     (footer())
                     (cart_drawer())
+                }
+            }
+        }
+    }
+}
+
+fn page_loader() -> Markup {
+    html! {
+        div id="page-loader"
+            class="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center bg-[color:var(--cream)] transition duration-500 ease-out" {
+            div class="flex flex-col items-center gap-5 text-center" {
+                div class="font-display text-6xl leading-none tracking-tight text-ink md:text-8xl" {
+                    "RBE" span class="text-[color:var(--hot)]" { "." }
+                }
+                div class="h-[3px] w-40 overflow-hidden rounded-full bg-ink/10" {
+                    div class="page-loader__bar h-full w-1/2 rounded-full bg-[color:var(--hot)]" {}
+                }
+                p class="max-w-xs text-[11px] uppercase tracking-[0.45em] text-ink/55" {
+                    "Loading the drop"
                 }
             }
         }
@@ -233,5 +254,85 @@ document.addEventListener('alpine:init', () => {
 });
 </script>"#
         .to_string(),
+    )
+}
+
+fn page_loader_script() -> Markup {
+    PreEscaped(
+        r#"<style>
+html.is-loading,
+html.is-loading body {
+  overflow: hidden;
+}
+#page-loader {
+  opacity: 1;
+  visibility: visible;
+}
+#page-loader.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+.page-loader__bar {
+  animation: page-loader-bar 1.15s ease-in-out infinite;
+  transform-origin: left center;
+}
+body.page-ready main {
+  animation: page-content-rise 0.5s ease-out both;
+}
+@keyframes page-loader-bar {
+  0% { transform: translateX(-110%) scaleX(0.55); }
+  55% { transform: translateX(90%) scaleX(1); }
+  100% { transform: translateX(220%) scaleX(0.6); }
+}
+@keyframes page-content-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+<script>
+(() => {
+  const doc = document.documentElement;
+  doc.classList.add('is-loading');
+
+  const hideLoader = () => {
+    const loader = document.getElementById('page-loader');
+    if (!loader) return;
+    loader.classList.add('is-hidden');
+    doc.classList.remove('is-loading');
+    document.body?.classList.add('page-ready');
+  };
+
+  const showLoader = () => {
+    const loader = document.getElementById('page-loader');
+    if (!loader) return;
+    loader.classList.remove('is-hidden');
+    doc.classList.add('is-loading');
+    document.body?.classList.remove('page-ready');
+  };
+
+  const isInternalNav = (link) => {
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return false;
+    if (link.target === '_blank' || link.hasAttribute('download')) return false;
+    try {
+      const url = new URL(link.href, window.location.origin);
+      return url.origin === window.location.origin && url.href !== window.location.href;
+    } catch {
+      return false;
+    }
+  };
+
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a');
+    if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (isInternalNav(link)) showLoader();
+  });
+
+  document.addEventListener('submit', () => showLoader());
+  window.addEventListener('pageshow', hideLoader);
+  window.addEventListener('load', () => window.setTimeout(hideLoader, 180), { once: true });
+})();
+</script>"#
+            .to_string(),
     )
 }
