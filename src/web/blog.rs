@@ -1,11 +1,11 @@
 //! The journal: public list + article pages (Markdown-rendered), and a
 //! staff-only editor at `/dashboard/posts`.
 
-use axum::Form;
-use axum::extract::{Path, State};
+use axum::extract::{Multipart, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use maud::{Markup, PreEscaped, html};
 use serde::Deserialize;
+use std::path::Path as StdPath;
 
 use crate::auth::StaffUser;
 use crate::db;
@@ -152,7 +152,26 @@ pub struct PostForm {
     status: String,
 }
 
-pub async fn post_save(user: StaffUser, State(state): State<AppState>, Form(f): Form<PostForm>) -> Response {
+pub async fn post_save(
+    user: StaffUser,
+    State(state): State<AppState>,
+    multipart: Multipart,
+) -> Response {
+    let (f, uploaded_cover) = match parse_post_form(multipart).await {
+        Ok(v) => v,
+        Err(msg) => {
+            let fallback = PostForm {
+                slug: String::new(),
+                title: String::new(),
+                excerpt: String::new(),
+                cover_url: String::new(),
+                tag: String::new(),
+                body_md: String::new(),
+                status: "draft".to_string(),
+            };
+            return editor_error(&msg, &fallback).into_response();
+        }
+    };
     let title = f.title.trim();
     let mut slug = f.slug.trim().to_string();
     if slug.is_empty() {
@@ -165,8 +184,12 @@ pub async fn post_save(user: StaffUser, State(state): State<AppState>, Form(f): 
     }
     let status = if f.status == "published" { "published" } else { "draft" };
     let cover = {
-        let c = f.cover_url.trim();
-        if c.is_empty() { None } else { Some(c) }
+        if let Some(path) = uploaded_cover.as_deref() {
+            Some(path)
+        } else {
+            let c = f.cover_url.trim();
+            if c.is_empty() { None } else { Some(c) }
+        }
     };
     let tag = if f.tag.trim().is_empty() { "Dispatch" } else { f.tag.trim() };
 
@@ -217,7 +240,7 @@ fn editor(post: Option<&Post>, error: Option<&str>) -> Markup {
                 a href="/dashboard/posts" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "← All posts" }
             }
             @if let Some(err) = error { p class="mt-4 text-sm text-red-500" { (err) } }
-            form method="post" action="/dashboard/posts" class="mt-6 space-y-4" {
+            form method="post" action="/dashboard/posts" enctype="multipart/form-data" class="mt-6 space-y-4" {
                 div {
                     label class="text-sm font-medium" { "Title" }
                     input name="title" value=(title) required class=(field);
@@ -237,7 +260,12 @@ fn editor(post: Option<&Post>, error: Option<&str>) -> Markup {
                     input name="excerpt" value=(excerpt) placeholder="One-line summary" class=(field);
                 }
                 div {
-                    label class="text-sm font-medium" { "Cover image URL (optional)" }
+                    label class="text-sm font-medium" { "Cover image upload" }
+                    input type="file" name="cover_upload" accept="image/png,image/jpeg,image/webp,image/gif" class=(field);
+                    p class="mt-2 text-xs opacity-60" { "Upload a JPG, PNG, WebP, or GIF. If you skip this, the URL field below is used." }
+                }
+                div {
+                    label class="text-sm font-medium" { "Cover image URL (optional fallback)" }
                     input name="cover_url" value=(cover) class=(field);
                 }
                 div {
@@ -278,6 +306,91 @@ fn now_rfc3339() -> String {
     time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default()
+}
+
+async fn parse_post_form(mut multipart: Multipart) -> Result<(PostForm, Option<String>), String> {
+    let mut form = PostForm {
+        slug: String::new(),
+        title: String::new(),
+        excerpt: String::new(),
+        cover_url: String::new(),
+        tag: String::new(),
+        body_md: String::new(),
+        status: String::new(),
+    };
+    let mut uploaded_cover = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| "Could not read the journal form upload.".to_string())?
+    {
+        let name = field.name().unwrap_or_default().to_string();
+        match name.as_str() {
+            "cover_upload" => {
+                let original = field.file_name().unwrap_or("cover").to_string();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|_| "Could not read the uploaded cover image.".to_string())?;
+                if !bytes.is_empty() {
+                    uploaded_cover = Some(save_cover_upload(&original, bytes.as_ref()).await?);
+                }
+            }
+            "slug" => form.slug = field.text().await.unwrap_or_default(),
+            "title" => form.title = field.text().await.unwrap_or_default(),
+            "excerpt" => form.excerpt = field.text().await.unwrap_or_default(),
+            "cover_url" => form.cover_url = field.text().await.unwrap_or_default(),
+            "tag" => form.tag = field.text().await.unwrap_or_default(),
+            "body_md" => form.body_md = field.text().await.unwrap_or_default(),
+            "status" => form.status = field.text().await.unwrap_or_default(),
+            _ => {}
+        }
+    }
+
+    Ok((form, uploaded_cover))
+}
+
+async fn save_cover_upload(filename: &str, bytes: &[u8]) -> Result<String, String> {
+    let ext = detect_image_extension(filename, bytes)?;
+    let dir = StdPath::new("static").join("uploads").join("journal");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|_| "Could not prepare the journal uploads folder.".to_string())?;
+    let basename = format!("journal-{}.{}", uuid::Uuid::new_v4(), ext);
+    let path = dir.join(&basename);
+    tokio::fs::write(&path, bytes)
+        .await
+        .map_err(|_| "Could not save the uploaded cover image.".to_string())?;
+    Ok(format!("/static/uploads/journal/{basename}"))
+}
+
+fn detect_image_extension(filename: &str, bytes: &[u8]) -> Result<&'static str, String> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Ok("png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Ok("jpg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Ok("gif");
+    }
+    if bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Ok("webp");
+    }
+
+    let ext = StdPath::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Ok("png"),
+        "jpg" | "jpeg" => Ok("jpg"),
+        "gif" => Ok("gif"),
+        "webp" => Ok("webp"),
+        _ => Err("Upload a JPG, PNG, WebP, or GIF image.".to_string()),
+    }
 }
 
 fn slugify(s: &str) -> String {

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 argon2 = { version = "0.5.3", features = ["std"] }
 base64 = "0.23.0"
 dotenvy = "0.15.7"
