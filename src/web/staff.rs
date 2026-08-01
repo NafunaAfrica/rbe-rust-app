@@ -45,16 +45,16 @@ pub async fn dashboard_owner(
                         }
                     }
                 }
-                aside class="rounded-[2rem] border border-ink/10 bg-ink p-7 text-[color:var(--cream)] shadow-[0_24px_80px_rgba(35,10,18,0.18)]" {
-                    div class="text-xs uppercase tracking-[0.35em] text-white/55" { "Quick actions" }
+                aside class="rounded-[2rem] border border-ink/10 bg-white p-7 text-ink shadow-[0_24px_80px_rgba(35,10,18,0.08)]" {
+                    div class="text-xs uppercase tracking-[0.35em] text-[color:var(--hot)]" { "Quick actions" }
                     div class="mt-5 space-y-3" {
-                        (dark_card("Orders & fulfilment", "Track incoming Shopify orders and shipping updates.", "/dashboard/orders"))
-                        (dark_card("Journal", "Publish posts and upload fresh cover images.", "/dashboard/posts"))
+                        (action_card("Orders & fulfilment", "Track incoming Shopify orders and shipping updates.", "/dashboard/orders"))
+                        (action_card("Journal", "Publish posts and upload fresh cover images.", "/dashboard/posts"))
                         @if user.is_admin() {
-                            (dark_card("Users & access", "Manage staff logins and customer accounts.", "/admin/team"))
+                            (action_card("Users & access", "Manage staff logins and customer accounts.", "/admin/team"))
                         }
                     }
-                    a href="/auth/logout" class="mt-6 inline-flex items-center text-xs uppercase tracking-[0.3em] text-white/55 hover:text-white" { "Sign out" }
+                    a href="/auth/logout" class="mt-6 inline-flex items-center text-xs uppercase tracking-[0.3em] opacity-55 hover:opacity-100" { "Sign out" }
                 }
             }
 
@@ -83,11 +83,11 @@ fn light_card(title: &str, desc: &str, href: &str) -> Markup {
     }
 }
 
-fn dark_card(title: &str, desc: &str, href: &str) -> Markup {
+fn action_card(title: &str, desc: &str, href: &str) -> Markup {
     html! {
-        a href=(href) class="block rounded-[1.25rem] border border-white/10 bg-white/5 p-4 transition hover:border-[color:var(--hot)] hover:bg-white/10" {
-            div class="font-display text-2xl leading-none" { (title) }
-            p class="mt-2 text-sm text-white/70" { (desc) }
+        a href=(href) class="block rounded-[1.25rem] border border-ink/10 bg-[color:var(--cream)]/65 p-4 text-ink transition hover:border-[color:var(--hot)] hover:shadow-[0_16px_40px_rgba(255,0,130,0.08)]" {
+            div class="font-display text-2xl leading-none text-ink" { (title) }
+            p class="mt-2 text-sm text-ink/70" { (desc) }
         }
     }
 }
@@ -308,26 +308,26 @@ fn render_team(staff: &[StaffRow], customers: &[CustomerSummary], error: Option<
                     }
                 }
 
-                aside class="rounded-[1.75rem] border border-ink/10 bg-ink p-6 text-[color:var(--cream)] shadow-[0_20px_60px_rgba(35,10,18,0.18)]" {
-                    div class="text-xs uppercase tracking-[0.35em] text-white/55" { "Add owner" }
-                    h2 class="mt-3 font-display text-4xl leading-none" { "Invite a new operator." }
-                    p class="mt-3 text-sm leading-7 text-white/70" {
+                aside class="rounded-[1.75rem] border border-ink/10 bg-white p-6 text-ink shadow-[0_20px_60px_rgba(35,10,18,0.08)]" {
+                    div class="text-xs uppercase tracking-[0.35em] text-[color:var(--hot)]" { "Add owner" }
+                    h2 class="mt-3 font-display text-4xl leading-none text-ink" { "Invite a new operator." }
+                    p class="mt-3 text-sm leading-7 text-ink/70" {
                         "Owners can access the business dashboard, orders, and journal tools. They do not get the full website-admin controls."
                     }
                     form method="post" action="/admin/team" class="mt-6 space-y-3" {
                         input name="email" type="email" required placeholder="owner@email.com"
-                            class="w-full rounded-full border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-[color:var(--hot)]";
+                            class="w-full rounded-full border border-ink/15 bg-[color:var(--cream)] px-4 py-3 text-sm text-ink outline-none placeholder:text-ink/35 focus:border-[color:var(--hot)]";
                         input name="password" type="password" required minlength="8" placeholder="Temporary password (min 8 chars)"
-                            class="w-full rounded-full border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-[color:var(--hot)]";
+                            class="w-full rounded-full border border-ink/15 bg-[color:var(--cream)] px-4 py-3 text-sm text-ink outline-none placeholder:text-ink/35 focus:border-[color:var(--hot)]";
                         button type="submit"
                             class="w-full rounded-full bg-[color:var(--hot)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.25em] text-white hover:bg-[color:var(--crimson)]" {
                             "Create owner"
                         }
                     }
-                    div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70" {
+                    div class="mt-6 rounded-2xl border border-ink/10 bg-[color:var(--blush)]/35 p-4 text-sm text-ink/70" {
                         "Tip: if someone forgets a password later, use the reset controls on the left instead of creating a duplicate account."
                     }
-                    a href="/dashboard" class="mt-6 inline-flex items-center text-xs uppercase tracking-[0.3em] text-white/55 hover:text-white" { "Open dashboard" }
+                    a href="/dashboard" class="mt-6 inline-flex items-center text-xs uppercase tracking-[0.3em] text-ink/55 hover:text-[color:var(--hot)]" { "Open dashboard" }
                 }
             }
         }
