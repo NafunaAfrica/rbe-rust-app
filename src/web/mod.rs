@@ -36,60 +36,6 @@ pub fn tee_mockup(image: &str, alt: &str, tee_color: &str) -> Markup {
     }
 }
 
-/// TEMPORARY diagnostic (build marker: diag-1). Reports how each table reads back
-/// on the live volume + probes a specific email. No PII returned (emails masked to
-/// domain + hash length only). Remove once the prod login issue is resolved.
-async fn diag(
-    axum::extract::State(state): axum::extract::State<AppState>,
-    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> axum::Json<serde_json::Value> {
-    use serde_json::json;
-    let db = state.db();
-    // Typed reads — exactly the path authenticate_* uses.
-    let customer = match db.query("SELECT * FROM customer").await {
-        Ok(mut r) => match r.take::<Vec<crate::models::Customer>>(0) {
-            Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
-            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
-        },
-        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
-    };
-    let staff = match db.query("SELECT * FROM staff").await {
-        Ok(mut r) => match r.take::<Vec<crate::models::Staff>>(0) {
-            Ok(v) => json!({ "n": v.len() as i64, "emails": v.iter().map(|s| s.email.clone()).collect::<Vec<_>>(), "status": "ok" }),
-            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
-        },
-        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
-    };
-    let product = match db.query("SELECT * FROM product").await {
-        Ok(mut r) => match r.take::<Vec<crate::models::Product>>(0) {
-            Ok(v) => json!({ "n": v.len() as i64, "status": "ok" }),
-            Err(e) => json!({ "n": -1, "status": format!("take-err: {e}") }),
-        },
-        Err(e) => json!({ "n": -1, "status": format!("query-err: {e}") }),
-    };
-
-    let mut probe = json!(null);
-    if let Some(email) = q.get("email") {
-        let em = email.trim().to_lowercase();
-        let all: Vec<crate::models::Customer> = match db.query("SELECT * FROM customer").await {
-            Ok(mut r) => r.take(0).unwrap_or_default(),
-            Err(_) => vec![],
-        };
-        let found = all.iter().find(|c| c.email == em);
-        probe = json!({
-            "select_star_total": all.len() as i64,
-            "found": found.is_some(),
-            "password_hash_len": found.map(|c| c.password_hash.len() as i64),
-        });
-    }
-
-    axum::Json(json!({
-        "build": "diag-2-typed",
-        "counts": { "customer": customer, "staff": staff, "product": product },
-        "probe": probe,
-    }))
-}
-
 pub fn router(state: AppState) -> Router {
     Router::new()
         // Health check (Coolify probes this inside the container)
@@ -102,7 +48,6 @@ pub fn router(state: AppState) -> Router {
         .route("/journal", get(blog::journal))
         .route("/journal/{slug}", get(blog::article))
         .route("/api/checkout", post(shop::checkout))
-        .route("/api/_diag", get(diag))
         .route("/events", get(events::events))
         // Customer accounts
         .route("/account", get(account::account_page))
