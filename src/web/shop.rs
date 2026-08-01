@@ -161,23 +161,10 @@ pub struct CheckoutReq {
 
 pub async fn checkout(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
     Json(req): Json<CheckoutReq>,
 ) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     use axum::http::StatusCode;
     let err = |code: StatusCode, msg: String| (code, Json(json!({ "error": msg })));
-
-    // Checkout is for signed-in shoppers: it gives them order history + tracking
-    // under their account, and lets us tie the Shopify order back to a customer.
-    if crate::auth::customer_email(&headers, state.cfg()).is_none() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Please sign in to check out.",
-                "login_required": true
-            })),
-        );
-    }
 
     if req.items.is_empty() {
         return err(StatusCode::BAD_REQUEST, "Your bag is empty.".into());
