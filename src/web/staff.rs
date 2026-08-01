@@ -25,46 +25,24 @@ pub async fn dashboard_owner(
 ) -> AppResult<Html<String>> {
     let analytics = super::analytics::dashboard_section(&state).await?;
     let body = html! {
-        div class="mx-auto max-w-6xl px-4 py-16" {
-            div class="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]" {
-                section class="rounded-[2rem] border border-ink/10 bg-[linear-gradient(135deg,rgba(255,0,130,0.08),rgba(255,255,255,0.94),rgba(35,10,18,0.08))] p-8 shadow-[0_24px_80px_rgba(35,10,18,0.08)]" {
-                    div class="text-xs uppercase tracking-[0.35em] text-[color:var(--hot)]" { "Owner dashboard" }
-                    h1 class="mt-3 font-display text-5xl leading-none md:text-7xl" { "Run RBE with clarity." }
-                    p class="mt-4 max-w-2xl text-sm leading-7 opacity-70" {
-                        "This is your operating room for the brand: watch traffic, keep content moving, manage orders, and jump into deeper website controls when you need them."
-                    }
-                    div class="mt-6 flex flex-wrap gap-3 text-xs uppercase tracking-widest" {
-                        span class="rounded-full border border-ink/15 bg-white/80 px-4 py-2" { (user.email) }
-                        span class="rounded-full border border-ink/15 bg-white/80 px-4 py-2" { (user.role) " access" }
-                    }
-                    div class="mt-8 flex flex-wrap gap-3" {
-                        a href="/dashboard/orders" class="inline-flex items-center justify-center rounded-full bg-[color:var(--hot)] px-5 py-3 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "View orders" }
-                        a href="/dashboard/posts" class="inline-flex items-center justify-center rounded-full border border-ink/15 bg-white px-5 py-3 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Manage journal" }
-                        @if user.is_admin() {
-                            a href="/admin" class="inline-flex items-center justify-center rounded-full border border-ink/15 bg-white px-5 py-3 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Open admin" }
-                        }
-                    }
+        div class="mx-auto max-w-4xl px-4 py-16" {
+            div class="flex items-center justify-between" {
+                div {
+                    div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "Owner dashboard" }
+                    h1 class="mt-1 font-display text-5xl" { "Welcome back" }
+                    p class="mt-2 text-sm opacity-60" { "Signed in as " (user.email) " · " (user.role) }
                 }
-                aside class="rounded-[2rem] border border-ink/10 bg-white p-7 text-ink shadow-[0_24px_80px_rgba(35,10,18,0.08)]" {
-                    div class="text-xs uppercase tracking-[0.35em] text-[color:var(--hot)]" { "Quick actions" }
-                    div class="mt-5 space-y-3" {
-                        (action_card("Orders & fulfilment", "Track incoming Shopify orders and shipping updates.", "/dashboard/orders"))
-                        (action_card("Journal", "Publish posts and upload fresh cover images.", "/dashboard/posts"))
-                        @if user.is_admin() {
-                            (action_card("Users & access", "Manage staff logins and customer accounts.", "/admin/team"))
-                        }
-                    }
-                    a href="/auth/logout" class="mt-6 inline-flex items-center text-xs uppercase tracking-[0.3em] opacity-55 hover:opacity-100" { "Sign out" }
-                }
+                a href="/auth/logout" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "Sign out" }
             }
 
             div class="mt-8" { (analytics) }
 
-            div class="mt-10 grid gap-4 lg:grid-cols-3" {
+            div class="mt-10 grid gap-4 sm:grid-cols-2" {
                 (light_card("Orders & fulfilment", "Every Shopify order and its fulfilment status, in one place.", "/dashboard/orders"))
-                (light_card("Journal", "Write, edit, and publish posts to the RBE journal.", "/dashboard/posts"))
+                (light_card("Journal", "Write and publish posts to the RBE journal.", "/dashboard/posts"))
                 @if user.is_admin() {
-                    (light_card("Website admin", "Manage storefront tools, Shopify visibility, users, and settings.", "/admin"))
+                    (light_card("Website admin", "Manage storefront tools, Shopify visibility, and settings.", "/admin"))
+                    (light_card("Users & access", "Manage staff logins and customer accounts.", "/admin/team"))
                 }
             }
         }
@@ -79,15 +57,6 @@ fn light_card(title: &str, desc: &str, href: &str) -> Markup {
         a href=(href) class="block rounded-[1.5rem] border border-ink/10 bg-white p-6 transition hover:-translate-y-0.5 hover:border-[color:var(--hot)] hover:shadow-[0_24px_60px_rgba(255,0,130,0.12)]" {
             div class="font-display text-3xl leading-none" { (title) }
             p class="mt-2 text-sm opacity-70" { (desc) }
-        }
-    }
-}
-
-fn action_card(title: &str, desc: &str, href: &str) -> Markup {
-    html! {
-        a href=(href) class="block rounded-[1.25rem] border border-ink/10 bg-[color:var(--cream)]/65 p-4 text-ink transition hover:border-[color:var(--hot)] hover:shadow-[0_16px_40px_rgba(255,0,130,0.08)]" {
-            div class="font-display text-2xl leading-none text-ink" { (title) }
-            p class="mt-2 text-sm text-ink/70" { (desc) }
         }
     }
 }
