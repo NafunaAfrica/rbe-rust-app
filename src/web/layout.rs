@@ -36,12 +36,12 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
                 (cart_store_script())
             }
             body {
-                div class="flex min-h-screen flex-col" {
+                div x-data="{}" class="flex min-h-screen flex-col" {
                     (header(nav))
                     main class="flex-1" { (body) }
                     (footer())
+                    (cart_drawer())
                 }
-                (cart_drawer())
             }
         }
     }

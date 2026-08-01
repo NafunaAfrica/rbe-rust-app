@@ -223,6 +223,25 @@ pub async fn upsert_post(
     Ok(())
 }
 
+/// Create or update a product/design record keyed by slug.
+pub async fn upsert_product(db: &Surreal<Db>, product: &Product) -> anyhow::Result<()> {
+    db.query("UPSERT type::thing('product', $slug) CONTENT $data")
+        .bind(("slug", product.slug.clone()))
+        .bind(("data", product.clone()))
+        .await?
+        .check()?;
+    Ok(())
+}
+
+/// Delete a product/design record by slug.
+pub async fn delete_product(db: &Surreal<Db>, slug: &str) -> anyhow::Result<()> {
+    db.query("DELETE type::thing('product', $slug)")
+        .bind(("slug", slug.to_string()))
+        .await?
+        .check()?;
+    Ok(())
+}
+
 /// Record a page view (first-party analytics). `day` is derived from the
 /// timestamp for cheap per-day grouping.
 pub async fn record_pageview(

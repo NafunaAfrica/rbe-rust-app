@@ -1,8 +1,9 @@
 //! Admin control panel: website management, Shopify visibility, Printify sync
 //! (legacy for now), and team access.
 
-use axum::extract::{Query, State};
-use axum::response::Html;
+use axum::Form;
+use axum::extract::{Path, Query, State};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use maud::{Markup, html};
 use serde::Deserialize;
@@ -12,6 +13,7 @@ use tokio_stream::Stream;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::auth::AdminUser;
+use crate::db;
 use crate::error::AppResult;
 use crate::models::{Post, Product};
 use crate::services::printify::Printify;
@@ -62,6 +64,11 @@ pub async fn dashboard(
             }
 
             div class="mt-10 grid gap-4 lg:grid-cols-3" {
+                (admin_card(
+                    "Product manager",
+                    "Add, edit, remove, and connect catalog items to the right Shopify handles.",
+                    "/admin/products",
+                ))
                 (admin_card(
                     "Shopify visibility",
                     "Check whether the current storefront token can see the products your bag and checkout rely on.",
@@ -326,6 +333,403 @@ pub async fn shopify_page(
         Nav::None,
         body,
     ).into_string()))
+}
+
+pub async fn products_page(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> AppResult<Html<String>> {
+    let products: Vec<Product> = state
+        .db()
+        .query("SELECT * FROM product ORDER BY slug")
+        .await?
+        .take(0)?;
+
+    let body = html! {
+        div class="mx-auto max-w-6xl px-4 py-16" {
+            div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between" {
+                div {
+                    div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "Catalog manager" }
+                    h1 class="mt-2 font-display text-5xl" { "Products" }
+                    p class="mt-2 max-w-2xl text-sm opacity-70" {
+                        "This is your site catalog. The slug controls the page URL on this website, and the Shopify handle tells checkout which Shopify product to open."
+                    }
+                }
+                div class="flex gap-3" {
+                    a href="/admin" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- Admin" }
+                    a href="/admin/products/new" class="rounded-full bg-[color:var(--hot)] px-5 py-2 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "New product" }
+                }
+            }
+
+            div class="mt-8 overflow-hidden rounded-xl border border-ink/10 bg-white" {
+                @if products.is_empty() {
+                    div class="px-6 py-10 text-sm opacity-60" { "No products yet. Add your first one." }
+                } @else {
+                    ul class="divide-y" {
+                        @for product in &products {
+                            li class="flex flex-col gap-4 px-6 py-5 md:flex-row md:items-start md:justify-between" {
+                                div class="min-w-0" {
+                                    div class="font-medium" { (product.slogan_flat()) }
+                                    div class="mt-1 text-xs uppercase tracking-widest opacity-60" { "Slug: " (product.slug.clone()) }
+                                    div class="mt-1 text-[11px] opacity-50 break-all" { "Shopify handle: " (product.storefront_handle()) }
+                                    div class="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-widest" {
+                                        span class="rounded-full bg-black/5 px-2 py-1" { "$" (product.price) }
+                                        span class="rounded-full bg-black/5 px-2 py-1" { (product.vibe.clone()) }
+                                        @if product.shopify_handle.is_some() {
+                                            span class="rounded-full bg-[color:color-mix(in_oklab,var(--hot)_12%,transparent)] px-2 py-1 text-[color:var(--hot)]" { "Mapped" }
+                                        } @else {
+                                            span class="rounded-full bg-amber-100 px-2 py-1 text-amber-800" { "Using slug as handle" }
+                                        }
+                                    }
+                                }
+                                a href=(format!("/admin/products/{}/edit", product.slug)) class="shrink-0 rounded-full border border-ink/20 px-4 py-2 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Edit" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    Ok(Html(shell(
+        "Products - RBE Admin",
+        "Manage storefront products and Shopify handle mappings.",
+        Nav::None,
+        body,
+    ).into_string()))
+}
+
+pub async fn product_new(_admin: AdminUser) -> Html<String> {
+    Html(product_editor(None, None).into_string())
+}
+
+pub async fn product_edit(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> AppResult<Html<String>> {
+    let product: Option<Product> = state
+        .db()
+        .query("SELECT * FROM type::thing('product', $slug)")
+        .bind(("slug", slug))
+        .await?
+        .take(0)?;
+    Ok(Html(product_editor(product.as_ref(), None).into_string()))
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ProductForm {
+    #[serde(default)]
+    original_slug: String,
+    #[serde(default)]
+    slug: String,
+    #[serde(default)]
+    shopify_handle: String,
+    #[serde(default)]
+    slogan: String,
+    #[serde(default)]
+    price: String,
+    #[serde(default)]
+    tee_color: String,
+    #[serde(default)]
+    ink_color: String,
+    #[serde(default)]
+    font_class: String,
+    #[serde(default)]
+    scale: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    vibe: String,
+    #[serde(default)]
+    image: String,
+}
+
+pub async fn product_save(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Form(f): Form<ProductForm>,
+) -> Response {
+    let title_hint = f.slogan.lines().next().unwrap_or_default();
+    let slug = if f.slug.trim().is_empty() {
+        slugify(title_hint)
+    } else {
+        slugify(&f.slug)
+    };
+    if slug.is_empty() {
+        return product_editor_error("Add a slogan or slug so the product has a page URL.", &f)
+            .into_response();
+    }
+
+    let price = match f.price.trim().parse::<i64>() {
+        Ok(v) if v >= 0 => v,
+        _ => {
+            return product_editor_error("Price must be a whole number like 40.", &f)
+                .into_response();
+        }
+    };
+
+    let scale = if f.scale.trim().is_empty() {
+        1.0
+    } else {
+        match f.scale.trim().parse::<f64>() {
+            Ok(v) if v > 0.0 => v,
+            _ => {
+                return product_editor_error("Scale must be a positive number like 1 or 0.95.", &f)
+                    .into_response();
+            }
+        }
+    };
+
+    let original_slug = f.original_slug.trim();
+    let existing: Option<Product> = if original_slug.is_empty() {
+        None
+    } else {
+        state
+            .db()
+            .query("SELECT * FROM type::thing('product', $slug)")
+            .bind(("slug", original_slug.to_string()))
+            .await
+            .ok()
+            .and_then(|mut r| r.take(0).ok().flatten())
+    };
+
+    let product = Product {
+        slug: slug.clone(),
+        shopify_handle: (!f.shopify_handle.trim().is_empty())
+            .then(|| f.shopify_handle.trim().to_string()),
+        slogan: f.slogan.trim().to_string(),
+        price,
+        tee_color: f.tee_color.trim().to_string(),
+        ink_color: f.ink_color.trim().to_string(),
+        font_class: if f.font_class.trim().is_empty() {
+            "font-display".to_string()
+        } else {
+            f.font_class.trim().to_string()
+        },
+        scale,
+        description: f.description.trim().to_string(),
+        vibe: f.vibe.trim().to_string(),
+        image: f.image.trim().to_string(),
+        printify_product_id: existing
+            .as_ref()
+            .and_then(|p| p.printify_product_id.clone()),
+        printify_status: existing.as_ref().and_then(|p| p.printify_status.clone()),
+        printify_shop_id: existing.as_ref().and_then(|p| p.printify_shop_id.clone()),
+    };
+
+    if product.slogan.trim().is_empty()
+        || product.description.trim().is_empty()
+        || product.image.trim().is_empty()
+        || product.tee_color.trim().is_empty()
+        || product.ink_color.trim().is_empty()
+    {
+        return product_editor_error(
+            "Fill in the slogan, description, image, tee color, and ink color before saving.",
+            &f,
+        )
+        .into_response();
+    }
+
+    let save = db::upsert_product(state.db(), &product).await;
+    if let Err(_) = save {
+        return product_editor_error(
+            "Could not save this product. The slug may already belong to another item.",
+            &f,
+        )
+        .into_response();
+    }
+
+    if !original_slug.is_empty() && original_slug != slug {
+        let _ = db::delete_product(state.db(), original_slug).await;
+    }
+
+    Redirect::to("/admin/products").into_response()
+}
+
+pub async fn product_delete(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+    Form(f): Form<ProductDeleteForm>,
+) -> Response {
+    let slug = f.slug.trim();
+    if slug.is_empty() {
+        return Redirect::to("/admin/products").into_response();
+    }
+    let _ = db::delete_product(state.db(), slug).await;
+    Redirect::to("/admin/products").into_response()
+}
+
+#[derive(Deserialize)]
+pub struct ProductDeleteForm {
+    slug: String,
+}
+
+fn product_editor_error(msg: &str, f: &ProductForm) -> Html<String> {
+    let product = Product {
+        slug: f.slug.clone(),
+        shopify_handle: (!f.shopify_handle.trim().is_empty()).then(|| f.shopify_handle.clone()),
+        slogan: f.slogan.clone(),
+        price: f.price.trim().parse().unwrap_or_default(),
+        tee_color: f.tee_color.clone(),
+        ink_color: f.ink_color.clone(),
+        font_class: if f.font_class.trim().is_empty() {
+            "font-display".to_string()
+        } else {
+            f.font_class.clone()
+        },
+        scale: f.scale.trim().parse().unwrap_or(1.0),
+        description: f.description.clone(),
+        vibe: f.vibe.clone(),
+        image: f.image.clone(),
+        printify_product_id: None,
+        printify_status: None,
+        printify_shop_id: None,
+    };
+    Html(product_editor(Some(&product), Some(msg)).into_string())
+}
+
+fn product_editor(product: Option<&Product>, error: Option<&str>) -> Markup {
+    let field = "mt-1 w-full rounded-md border border-ink/20 bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--hot)]";
+    let original_slug = product.map(|p| p.slug.clone()).unwrap_or_default();
+    let slug = product.map(|p| p.slug.clone()).unwrap_or_default();
+    let shopify_handle = product
+        .and_then(|p| p.shopify_handle.clone())
+        .unwrap_or_default();
+    let slogan = product.map(|p| p.slogan.clone()).unwrap_or_default();
+    let price = product.map(|p| p.price.to_string()).unwrap_or_default();
+    let tee_color = product.map(|p| p.tee_color.clone()).unwrap_or_default();
+    let ink_color = product.map(|p| p.ink_color.clone()).unwrap_or_default();
+    let font_class = product
+        .map(|p| p.font_class.clone())
+        .unwrap_or_else(|| "font-display".to_string());
+    let scale = product
+        .map(|p| p.scale.to_string())
+        .unwrap_or_else(|| "1".to_string());
+    let description = product.map(|p| p.description.clone()).unwrap_or_default();
+    let vibe = product.map(|p| p.vibe.clone()).unwrap_or_default();
+    let image = product.map(|p| p.image.clone()).unwrap_or_default();
+    let is_edit = product.is_some();
+
+    let content = html! {
+        div class="mx-auto max-w-3xl px-4 py-16" {
+            div class="flex items-center justify-between" {
+                h1 class="font-display text-4xl" {
+                    @if is_edit { "Edit product" } @else { "New product" }
+                }
+                a href="/admin/products" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- All products" }
+            }
+
+            div class="mt-4 rounded-xl border border-ink/10 bg-white p-5 text-sm opacity-80" {
+                p { "Slug = this website's page URL, like /shop/all-sugar-no-daddy." }
+                p class="mt-2" { "Shopify handle = the Shopify product checkout should open for this item. Leave it blank if Shopify uses the same value as the slug." }
+            }
+
+            @if let Some(err) = error {
+                p class="mt-4 text-sm text-red-500" { (err) }
+            }
+
+            @if is_edit {
+                form method="post" action="/admin/products/delete" class="mt-6" {
+                    input type="hidden" name="slug" value=(original_slug.clone());
+                    button type="submit" class="rounded-full border border-red-300 px-5 py-2 text-sm font-semibold uppercase tracking-widest text-red-700 hover:bg-red-50" { "Delete product" }
+                }
+            }
+
+            form method="post" action="/admin/products" class="mt-6 space-y-4" {
+                input type="hidden" name="original_slug" value=(original_slug);
+
+                div class="grid gap-4 md:grid-cols-2" {
+                    div {
+                        label class="text-sm font-medium" { "Slug" }
+                        input name="slug" value=(slug) placeholder="auto from slogan" class=(field);
+                    }
+                    div {
+                        label class="text-sm font-medium" { "Shopify handle" }
+                        input name="shopify_handle" value=(shopify_handle) placeholder="usually matches Shopify product handle" class=(field);
+                    }
+                }
+
+                div {
+                    label class="text-sm font-medium" { "Slogan" }
+                    textarea name="slogan" rows="3" class=(field) { (slogan) }
+                }
+
+                div class="grid gap-4 md:grid-cols-2" {
+                    div {
+                        label class="text-sm font-medium" { "Price" }
+                        input name="price" value=(price) placeholder="40" class=(field);
+                    }
+                    div {
+                        label class="text-sm font-medium" { "Vibe / collection" }
+                        input name="vibe" value=(vibe) placeholder="Self-made" class=(field);
+                    }
+                }
+
+                div class="grid gap-4 md:grid-cols-2" {
+                    div {
+                        label class="text-sm font-medium" { "Tee color" }
+                        input name="tee_color" value=(tee_color) placeholder="#ffffff" class=(field);
+                    }
+                    div {
+                        label class="text-sm font-medium" { "Ink color" }
+                        input name="ink_color" value=(ink_color) placeholder="#ff005c" class=(field);
+                    }
+                }
+
+                div class="grid gap-4 md:grid-cols-2" {
+                    div {
+                        label class="text-sm font-medium" { "Font class" }
+                        input name="font_class" value=(font_class) placeholder="font-display" class=(field);
+                    }
+                    div {
+                        label class="text-sm font-medium" { "Scale" }
+                        input name="scale" value=(scale) placeholder="1" class=(field);
+                    }
+                }
+
+                div {
+                    label class="text-sm font-medium" { "Image path or URL" }
+                    input name="image" value=(image) placeholder="/static/img/all-sugar-no-daddy.png" class=(field);
+                }
+
+                div {
+                    label class="text-sm font-medium" { "Description" }
+                    textarea name="description" rows="4" class=(field) { (description) }
+                }
+
+                div class="flex flex-wrap items-center justify-between gap-3 pt-2" {
+                    @if !is_edit {
+                        span class="text-xs uppercase tracking-widest opacity-50" { "New products appear in the site catalog immediately after save." }
+                    }
+
+                    button type="submit" class="rounded-full bg-[color:var(--hot)] px-6 py-2 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "Save product" }
+                }
+            }
+        }
+    };
+
+    shell(
+        "Product editor - RBE Admin",
+        "Manage RBE product metadata and Shopify handle mappings.",
+        Nav::None,
+        content,
+    )
+}
+
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in s.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash && !out.is_empty() {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
 }
 
 pub async fn printify_page(
