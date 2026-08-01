@@ -355,9 +355,9 @@ pub async fn products_page(
                         "This is your site catalog. The slug controls the page URL on this website, and the Shopify handle tells checkout which Shopify product to open."
                     }
                 }
-                div class="flex gap-3" {
-                    a href="/admin" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- Admin" }
-                    a href="/admin/products/new" class="rounded-full bg-[color:var(--hot)] px-5 py-2 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "New product" }
+                div class="flex flex-wrap items-center gap-3 sm:justify-end" {
+                    a href="/admin" class="inline-flex items-center text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- Admin" }
+                    a href="/admin/products/new" class="inline-flex items-center justify-center rounded-full bg-[color:var(--hot)] px-5 py-2 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "New product" }
                 }
             }
 
@@ -368,7 +368,7 @@ pub async fn products_page(
                     ul class="divide-y" {
                         @for product in &products {
                             li class="flex flex-col gap-4 px-6 py-5 md:flex-row md:items-start md:justify-between" {
-                                div class="min-w-0" {
+                                div class="min-w-0 flex-1" {
                                     div class="font-medium" { (product.slogan_flat()) }
                                     div class="mt-1 text-xs uppercase tracking-widest opacity-60" { "Slug: " (product.slug.clone()) }
                                     div class="mt-1 text-[11px] opacity-50 break-all" { "Shopify handle: " (product.storefront_handle()) }
@@ -382,7 +382,7 @@ pub async fn products_page(
                                         }
                                     }
                                 }
-                                a href=(format!("/admin/products/{}/edit", product.slug)) class="shrink-0 rounded-full border border-ink/20 px-4 py-2 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Edit" }
+                                a href=(format!("/admin/products/{}/edit", product.slug)) class="inline-flex shrink-0 items-center justify-center self-start rounded-full border border-ink/20 px-4 py-2 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Edit" }
                             }
                         }
                     }
