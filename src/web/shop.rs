@@ -188,7 +188,20 @@ pub async fn checkout(
     let mut missing: Vec<String> = Vec::new();
 
     for item in &req.items {
-        let found = match shopify.product_by_handle(&item.slug).await {
+        let local: Option<Product> = match state
+            .db()
+            .query("SELECT * FROM type::thing('product', $slug)")
+            .bind(("slug", item.slug.clone()))
+            .await
+        {
+            Ok(mut r) => r.take(0).ok().flatten(),
+            Err(_) => None,
+        };
+        let handle = local
+            .as_ref()
+            .map(|p| p.storefront_handle().to_string())
+            .unwrap_or_else(|| item.slug.clone());
+        let found = match shopify.admin_product_by_handle(&handle).await {
             Ok(v) => v,
             Err(e) => return err(StatusCode::BAD_GATEWAY, format!("Shopify error: {e}")),
         };
@@ -207,7 +220,7 @@ pub async fn checkout(
                     })
                     .or_else(|| sp.variants.0.first());
                 match variant {
-                    Some(v) => lines.push((v.id.clone(), item.qty)),
+                    Some(v) => lines.push((v.legacy_resource_id.clone(), item.qty)),
                     None => missing.push(item.slug.clone()),
                 }
             }
@@ -219,13 +232,13 @@ pub async fn checkout(
         return err(
             StatusCode::CONFLICT,
             format!(
-                "Not live for checkout yet: {}. These drops need to be published to Shopify first (sync them from the admin panel).",
+                "Not live for checkout yet: {}. These products need to be published to Shopify's Online Store before checkout can see them.",
                 missing.join(", ")
             ),
         );
     }
 
-    match shopify.create_cart(&lines).await {
+    match shopify.cart_permalink(&lines) {
         Ok(url) => (StatusCode::OK, Json(json!({ "url": url }))),
         Err(e) => err(StatusCode::BAD_GATEWAY, format!("Shopify checkout error: {e}")),
     }

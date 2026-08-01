@@ -21,6 +21,28 @@ pub struct Money {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct Domain {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentSettings {
+    #[serde(rename = "enabledPresentmentCurrencies")]
+    pub enabled_presentment_currencies: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShopInfo {
+    pub name: String,
+    #[serde(rename = "primaryDomain")]
+    pub primary_domain: Domain,
+    #[serde(rename = "shipsToCountries")]
+    pub ships_to_countries: Vec<String>,
+    #[serde(rename = "paymentSettings")]
+    pub payment_settings: PaymentSettings,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Image {
     pub url: String,
     #[serde(rename = "altText")]
@@ -41,6 +63,16 @@ pub struct Variant {
     pub price: Money,
     #[serde(rename = "availableForSale")]
     pub available_for_sale: bool,
+    #[serde(rename = "selectedOptions")]
+    pub selected_options: Vec<SelectedOption>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminVariant {
+    #[serde(rename = "legacyResourceId")]
+    pub legacy_resource_id: String,
+    #[allow(dead_code)]
+    pub display_name: Option<String>,
     #[serde(rename = "selectedOptions")]
     pub selected_options: Vec<SelectedOption>,
 }
@@ -69,6 +101,20 @@ pub struct Product {
     pub images: Edges<Image>,
     pub variants: Edges<Variant>,
     pub options: Vec<ProductOption>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminProduct {
+    #[allow(dead_code)]
+    pub id: String,
+    pub title: String,
+    pub handle: String,
+    pub variants: Edges<AdminVariant>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccessScope {
+    pub handle: String,
 }
 
 /// Generic Shopify `{ edges: [{ node }] }` connection, flattened to a Vec.
@@ -113,6 +159,13 @@ impl<'a> Shopify<'a> {
         )
     }
 
+    fn admin_endpoint(&self) -> String {
+        format!(
+            "https://{}/admin/api/{}/graphql.json",
+            self.cfg.shopify_store_domain, self.cfg.shopify_api_version
+        )
+    }
+
     async fn request(&self, query: &str, variables: serde_json::Value) -> AppResult<serde_json::Value> {
         let resp = self
             .http
@@ -141,11 +194,87 @@ impl<'a> Shopify<'a> {
         Ok(body["data"].clone())
     }
 
+    async fn admin_access_token(&self) -> AppResult<String> {
+        #[derive(Deserialize)]
+        struct TokenResponse {
+            access_token: String,
+        }
+
+        let client_id = self
+            .cfg
+            .shopify_client_id
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("SHOPIFY_CLIENT_ID or SHOPIFY_API_KEY is not configured".into()))?;
+        let client_secret = self
+            .cfg
+            .shopify_client_secret
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("SHOPIFY_CLIENT_SECRET or SHOPIFY_WEBHOOK_SECRET is not configured".into()))?;
+
+        let resp = self
+            .http
+            .post(format!(
+                "https://{}/admin/oauth/access_token",
+                self.cfg.shopify_store_domain
+            ))
+            .form(&[
+                ("grant_type", "client_credentials"),
+                ("client_id", client_id.as_str()),
+                ("client_secret", client_secret.as_str()),
+            ])
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body = resp.text().await?;
+        if !status.is_success() {
+            return Err(AppError::BadRequest(format!(
+                "Shopify admin token request failed ({status}): {body}"
+            )));
+        }
+
+        let parsed: TokenResponse =
+            serde_json::from_str(&body).map_err(|e| AppError::Other(e.into()))?;
+        Ok(parsed.access_token)
+    }
+
+    async fn admin_request(
+        &self,
+        query: &str,
+        variables: serde_json::Value,
+    ) -> AppResult<serde_json::Value> {
+        let access_token = self.admin_access_token().await?;
+        let resp = self
+            .http
+            .post(self.admin_endpoint())
+            .header("X-Shopify-Access-Token", access_token)
+            .json(&json!({ "query": query, "variables": variables }))
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await?;
+        if let Some(errors) = body.get("errors").filter(|e| !e.is_null()) {
+            return Err(AppError::BadRequest(format!("Shopify admin: {errors}")));
+        }
+        if !status.is_success() {
+            return Err(AppError::BadRequest(format!("Shopify admin HTTP {status}")));
+        }
+        Ok(body["data"].clone())
+    }
+
     pub async fn products(&self, first: i32) -> AppResult<Vec<Product>> {
         let data = self.request(PRODUCTS_QUERY, json!({ "first": first })).await?;
         let edges: Edges<Product> = serde_json::from_value(data["products"].clone())
             .map_err(|e| AppError::Other(e.into()))?;
         Ok(edges.0)
+    }
+
+    pub async fn shop_info(&self) -> AppResult<ShopInfo> {
+        let data = self.request(SHOP_INFO_QUERY, json!({})).await?;
+        let shop: ShopInfo =
+            serde_json::from_value(data["shop"].clone()).map_err(|e| AppError::Other(e.into()))?;
+        Ok(shop)
     }
 
     pub async fn product_by_handle(&self, handle: &str) -> AppResult<Option<Product>> {
@@ -158,6 +287,29 @@ impl<'a> Shopify<'a> {
         let p: Product = serde_json::from_value(data["product"].clone())
             .map_err(|e| AppError::Other(e.into()))?;
         Ok(Some(p))
+    }
+
+    pub async fn admin_product_by_handle(&self, handle: &str) -> AppResult<Option<AdminProduct>> {
+        let data = self
+            .admin_request(ADMIN_PRODUCT_BY_HANDLE_QUERY, json!({ "handle": handle }))
+            .await?;
+        if data["productByHandle"].is_null() {
+            return Ok(None);
+        }
+        let p: AdminProduct = serde_json::from_value(data["productByHandle"].clone())
+            .map_err(|e| AppError::Other(e.into()))?;
+        Ok(Some(p))
+    }
+
+    pub async fn current_app_scopes(&self) -> AppResult<Vec<String>> {
+        let data = self
+            .admin_request(CURRENT_APP_SCOPES_QUERY, json!({}))
+            .await?;
+        let scopes: Vec<AccessScope> = serde_json::from_value(
+            data["currentAppInstallation"]["accessScopes"].clone(),
+        )
+        .map_err(|e| AppError::Other(e.into()))?;
+        Ok(scopes.into_iter().map(|s| s.handle).collect())
     }
 
     /// Create a Shopify cart and return its hosted checkout URL.
@@ -176,12 +328,38 @@ impl<'a> Shopify<'a> {
         }
         Ok(cart["checkoutUrl"].as_str().unwrap_or_default().to_string())
     }
+
+    pub fn cart_permalink(&self, lines: &[(String, i32)]) -> AppResult<String> {
+        if lines.is_empty() {
+            return Err(AppError::BadRequest("Cannot build a checkout link for an empty cart".into()));
+        }
+        let line_spec = lines
+            .iter()
+            .map(|(id, qty)| format!("{id}:{qty}"))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        Ok(format!(
+            "https://{}/cart/{}?channel=online_store",
+            self.cfg.shopify_store_domain, line_spec
+        ))
+    }
 }
 
 pub fn format_money(amount: &str, currency: &str) -> String {
     let value: f64 = amount.parse().unwrap_or(0.0);
     format!("{currency} {value:.2}")
 }
+
+const SHOP_INFO_QUERY: &str = r#"
+query GetShopInfo {
+  shop {
+    name
+    primaryDomain { url }
+    shipsToCountries
+    paymentSettings { enabledPresentmentCurrencies }
+  }
+}"#;
 
 const PRODUCTS_QUERY: &str = r#"
 query GetProducts($first: Int!) {
@@ -204,6 +382,36 @@ query GetProductByHandle($handle: String!) {
     images(first: 10) { edges { node { url altText } } }
     variants(first: 100) { edges { node { id title price { amount currencyCode } availableForSale selectedOptions { name value } } } }
     options { name values }
+  }
+}"#;
+
+const ADMIN_PRODUCT_BY_HANDLE_QUERY: &str = r#"
+query AdminProductByHandle($handle: String!) {
+  productByHandle(handle: $handle) {
+    id
+    title
+    handle
+    variants(first: 100) {
+      edges {
+        node {
+          legacyResourceId
+          displayName
+          selectedOptions {
+            name
+            value
+          }
+        }
+      }
+    }
+  }
+}"#;
+
+const CURRENT_APP_SCOPES_QUERY: &str = r#"
+query CurrentAppScopes {
+  currentAppInstallation {
+    accessScopes {
+      handle
+    }
   }
 }"#;
 

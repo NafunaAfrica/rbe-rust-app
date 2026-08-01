@@ -36,10 +36,10 @@ pub async fn dashboard_owner(user: StaffUser, State(state): State<AppState>) -> 
 
             div class="mt-10 grid gap-4 sm:grid-cols-2" {
                 (card("Sales & analytics", "Revenue, orders and traffic — coming in this build.", "#"))
-                (card("Orders & fulfilment", "Every Shopify order and its Printify tracking, in one place.", "/dashboard/orders"))
+                (card("Orders & fulfilment", "Every Shopify order and its fulfilment status, in one place.", "/dashboard/orders"))
                 (card("Journal", "Write and publish posts to the RBE journal.", "/dashboard/posts"))
                 @if user.is_admin() {
-                    (card("Admin control panel", "Products, Printify sync, team and settings.", "/admin"))
+                    (card("Website admin", "Manage storefront tools, Shopify visibility, team and settings.", "/admin"))
                 }
             }
         }

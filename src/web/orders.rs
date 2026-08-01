@@ -1,5 +1,5 @@
 //! Orders & fulfilment view for staff (`/dashboard/orders`). Data is ingested
-//! from Shopify order webhooks; tracking arrives once Printify ships.
+//! from Shopify order webhooks; tracking updates flow back from Shopify.
 
 use axum::extract::State;
 use axum::response::Html;
@@ -41,7 +41,7 @@ pub async fn orders_list(_user: StaffUser, State(state): State<AppState>) -> App
                     div class="font-display text-2xl" { "No orders yet" }
                     p class="mt-2 mx-auto max-w-md text-sm opacity-70" {
                         "Orders appear here automatically once Shopify order webhooks are pointed at "
-                        span class="font-mono" { "/api/webhooks/shopify" } ". Printify ships them and the tracking flows back."
+                        span class="font-mono" { "/api/webhooks/shopify" } ". Fulfilment updates and tracking then flow back into this table."
                     }
                 }
             } @else {

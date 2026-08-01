@@ -19,6 +19,7 @@ pub async fn connect(cfg: &crate::config::Config) -> anyhow::Result<Surreal<Db>>
     define_schema(&db).await?;
     repair_broken_tables(&db).await?;
     seed_products(&db).await?;
+    backfill_shopify_handles(&db).await?;
     seed_shop_cache(&db).await?;
     seed_staff(&db, cfg).await?;
     seed_posts(&db).await?;
@@ -32,6 +33,7 @@ async fn define_schema(db: &Surreal<Db>) -> anyhow::Result<()> {
         r#"
         DEFINE TABLE IF NOT EXISTS product SCHEMALESS;
         DEFINE FIELD IF NOT EXISTS slug ON product TYPE string;
+        DEFINE FIELD IF NOT EXISTS shopify_handle ON product TYPE option<string>;
         DEFINE INDEX IF NOT EXISTS product_slug ON product FIELDS slug UNIQUE;
 
         DEFINE TABLE IF NOT EXISTS shop_cache SCHEMALESS;
@@ -255,6 +257,33 @@ pub async fn upsert_order(db: &Surreal<Db>, order: &crate::models::Order) -> any
     Ok(())
 }
 
+/// Update a local product record from Shopify product data. We match first on
+/// explicit `shopify_handle`, and also allow a slug match for products whose
+/// Shopify handle is intentionally the same as the slug.
+pub async fn sync_product_from_shopify(
+    db: &Surreal<Db>,
+    handle: &str,
+    price: i64,
+    description: Option<&str>,
+    image: Option<&str>,
+) -> anyhow::Result<()> {
+    db.query(
+        "UPDATE product SET \
+         price = $price, \
+         description = IF $description = NONE OR $description = '' THEN description ELSE $description END, \
+         image = IF $image = NONE OR $image = '' THEN image ELSE $image END, \
+         shopify_handle = IF shopify_handle = NONE THEN $handle ELSE shopify_handle END \
+         WHERE shopify_handle = $handle OR slug = $handle",
+    )
+    .bind(("handle", handle.to_string()))
+    .bind(("price", price))
+    .bind(("description", description.map(|s| s.to_string())))
+    .bind(("image", image.map(|s| s.to_string())))
+    .await?
+    .check()?;
+    Ok(())
+}
+
 /// Register a new customer (shopper). Fails if the email already exists.
 pub async fn create_customer(
     db: &Surreal<Db>,
@@ -317,8 +346,20 @@ async fn seed_products(db: &Surreal<Db>) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn backfill_shopify_handles(db: &Surreal<Db>) -> anyhow::Result<()> {
+    for (slug, handle) in shopify_handle_seed_map() {
+        db.query("UPDATE type::thing('product', $slug) SET shopify_handle = $handle")
+            .bind(("slug", slug.to_string()))
+            .bind(("handle", handle.to_string()))
+            .await?
+            .check()?;
+    }
+    Ok(())
+}
+
 fn product(
     slug: &str,
+    shopify_handle: Option<&str>,
     slogan: &str,
     price: i64,
     tee: &str,
@@ -331,6 +372,7 @@ fn product(
 ) -> Product {
     Product {
         slug: slug.into(),
+        shopify_handle: shopify_handle.map(|s| s.into()),
         slogan: slogan.into(),
         price,
         tee_color: tee.into(),
@@ -350,28 +392,53 @@ fn seed_data() -> Vec<Product> {
     const D: &str = "font-display";
     const S: &str = "font-serif-display";
     vec![
-        product("rich-b-energy", "RICH B\nENERGY", 42, "#ffffff", "#e60023", D, 1.1,
+        product("rich-b-energy", None, "RICH B\nENERGY", 42, "#ffffff", "#e60023", D, 1.1,
             "The flagship. Loud, unapologetic, iconic. Heavyweight 100% cotton.", "Flagship", "tee-rich-b-energy.jpg"),
-        product("hot-girls-go-to-therapy", "Hot Girls\nGo To Therapy", 38, "#ffc7dd", "#c1153f", S, 1.0,
+        product("hot-girls-go-to-therapy", Some("hot-girls-go-to-therapy-t-shirt-feminist-self-care-graphic-tee"), "Hot Girls\nGo To Therapy", 38, "#ffc7dd", "#c1153f", S, 1.0,
             "Soft pink tee, red script. For the ones who did the work.", "Soft power", "tee-hot-girls-therapy.jpg"),
-        product("main-character", "MAIN\nCHARACTER", 38, "#ffffff", "#e60023", S, 1.0,
+        product("main-character", None, "MAIN\nCHARACTER", 38, "#ffffff", "#e60023", S, 1.0,
             "White tee, red serif print. You're the plot.", "Lead role", "tee-main-character.jpg"),
-        product("im-literally-just-a-girl", "I'm literally\njust a girl", 36, "#ff2b8f", "#ffffff", S, 1.0,
+        product("im-literally-just-a-girl", Some("graphic-tee-i-m-literally-just-a-girl-oversized-shirt"), "I'm literally\njust a girl", 36, "#ff2b8f", "#ffffff", S, 1.0,
             "Hot pink, cream serif. The universal defense.", "Serve", "tee-just-a-girl.jpg"),
-        product("all-sugar-no-daddy", "ALL SUGAR\nNO DADDY", 40, "#ffffff", "#e60023", D, 1.0,
+        product("all-sugar-no-daddy", None, "ALL SUGAR\nNO DADDY", 40, "#ffffff", "#e60023", D, 1.0,
             "Boxy fit, tiny label detail. Self-made sweetness.", "Self-made", "tee-all-sugar.jpg"),
-        product("bad-b-club", "BAD B\nCLUB", 44, "#0a0a0a", "#ff2b8f", D, 1.2,
+        product("bad-b-club", Some("bad-bitch-club-t-shirt-feminist-slogan-tee-minimal-red-text"), "BAD B\nCLUB", 44, "#0a0a0a", "#ff2b8f", D, 1.2,
             "Members only. Black tee, screaming pink ink.", "Members only", "tee-bad-b-club.jpg"),
-        product("boring-baby", "I'm boring baby,\nall I do is\nmake money\n& come home.", 40, "#ffffff", "#e60023", S, 0.65,
+        product("boring-baby", Some("oversized-tee-im-boring-baby-all-i-do-is-make-money-come-home-graphic"), "I'm boring baby,\nall I do is\nmake money\n& come home.", 40, "#ffffff", "#e60023", S, 0.65,
             "For the private ones. White tee, red serif print.", "Grown", "tee-boring-baby.jpg"),
-        product("fuck-normal-magic", "F*CK NORMAL\nI WANT\nMAGIC", 42, "#ffffff", "#ff2b8f", D, 0.9,
+        product("fuck-normal-magic", None, "F*CK NORMAL\nI WANT\nMAGIC", 42, "#ffffff", "#ff2b8f", D, 0.9,
             "Neon pink graffiti print. For the ones asking for more.", "Manifest", "tee-fuck-normal-magic.jpg"),
-        product("call-me-when-youre-rich", "CALL ME WHEN\nYOU'RE RICH", 42, "#f5e9d4", "#4b2e83", D, 1.0,
+        product("call-me-when-youre-rich", None, "CALL ME WHEN\nYOU'RE RICH", 42, "#f5e9d4", "#4b2e83", D, 1.0,
             "Cream tee, deep purple serif. A boundary, not a suggestion.", "Boundary", "tee-rich-b-energy.jpg"),
-        product("father-figure", "FATHER\nFIGURE", 40, "#ffffff", "#c8102e", S, 1.0,
+        product("father-figure", Some("father-figure-crop-tee-womens-feminist-statement-top"), "FATHER\nFIGURE", 40, "#ffffff", "#c8102e", S, 1.0,
             "White tee, red serif. Provider energy — for her.", "Provider", "tee-main-character.jpg"),
-        product("sorry-im-late-kids", "SORRY I'M LATE\nI HAVE KIDS", 40, "#ffffff", "#c8102e", S, 1.0,
+        product("sorry-im-late-kids", None, "SORRY I'M LATE\nI HAVE KIDS", 40, "#ffffff", "#c8102e", S, 1.0,
             "For the mums who still showed up. White tee, red serif.", "Mum life", "tee-main-character.jpg"),
+    ]
+}
+
+fn shopify_handle_seed_map() -> [(&'static str, &'static str); 5] {
+    [
+        (
+            "hot-girls-go-to-therapy",
+            "hot-girls-go-to-therapy-t-shirt-feminist-self-care-graphic-tee",
+        ),
+        (
+            "im-literally-just-a-girl",
+            "graphic-tee-i-m-literally-just-a-girl-oversized-shirt",
+        ),
+        (
+            "bad-b-club",
+            "bad-bitch-club-t-shirt-feminist-slogan-tee-minimal-red-text",
+        ),
+        (
+            "boring-baby",
+            "oversized-tee-im-boring-baby-all-i-do-is-make-money-come-home-graphic",
+        ),
+        (
+            "father-figure",
+            "father-figure-crop-tee-womens-feminist-statement-top",
+        ),
     ]
 }
 

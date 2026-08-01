@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Product {
     pub slug: String,
+    #[serde(default)]
+    pub shopify_handle: Option<String>,
     pub slogan: String,
     pub price: i64,
     pub tee_color: String,
@@ -155,6 +157,10 @@ impl Post {
 }
 
 impl Product {
+    pub fn storefront_handle(&self) -> &str {
+        self.shopify_handle.as_deref().unwrap_or(&self.slug)
+    }
+
     /// Whether this product has been published to Shopify (and is therefore
     /// buyable). We treat a Printify sync as the signal it reached Shopify.
     pub fn is_live(&self) -> bool {

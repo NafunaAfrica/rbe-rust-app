@@ -65,6 +65,7 @@ pub fn router(state: AppState) -> Router {
         .route("/dashboard/posts/{slug}/edit", get(blog::post_edit))
         // Admin (guarded by the AdminUser extractor inside each handler)
         .route("/admin", get(admin::dashboard))
+        .route("/admin/shopify", get(admin::shopify_page))
         .route("/admin/team", get(staff::team_page).post(staff::team_create))
         .route("/admin/printify", get(admin::printify_page))
         .route("/admin/printify/sync", get(admin::printify_sync_stream))

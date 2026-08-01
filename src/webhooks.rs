@@ -70,6 +70,23 @@ pub async fn shopify(
                 }
             }
         }
+    } else if topic.starts_with("products/") {
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body) {
+            if let Some((handle, price, description, image)) = parse_shopify_product(&v) {
+                if let Err(e) = db::sync_product_from_shopify(
+                    state.db(),
+                    &handle,
+                    price,
+                    description.as_deref(),
+                    image.as_deref(),
+                )
+                .await
+                {
+                    tracing::error!(error = %e, handle = %handle, "failed to sync shopify product");
+                }
+            }
+        }
+        bump(&state, &format!("shopify:{topic}")).await;
     } else {
         bump(&state, &format!("shopify:{topic}")).await;
     }
@@ -131,6 +148,60 @@ fn parse_shopify_order(v: &serde_json::Value) -> Option<crate::models::Order> {
         tracking_number,
         created_at: str_of("created_at"),
     })
+}
+
+fn parse_shopify_product(
+    v: &serde_json::Value,
+) -> Option<(String, i64, Option<String>, Option<String>)> {
+    let handle = v.get("handle")?.as_str()?.to_string();
+    let description = v
+        .get("body_html")
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("bodyHtml").and_then(|x| x.as_str()))
+        .map(strip_html)
+        .filter(|s| !s.is_empty());
+    let image = v
+        .get("image")
+        .and_then(|img| img.get("src").and_then(|x| x.as_str()))
+        .or_else(|| v.get("images").and_then(|imgs| imgs.as_array()).and_then(|arr| arr.first()).and_then(|img| img.get("src").and_then(|x| x.as_str())))
+        .map(String::from);
+    let price_str = v
+        .get("variants")
+        .and_then(|vars| vars.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|variant| variant.get("price").and_then(|x| x.as_str()))
+        .unwrap_or("0");
+    let price = price_str
+        .parse::<f64>()
+        .map(|p| p.round() as i64)
+        .unwrap_or(0);
+    Some((handle, price, description, image))
+}
+
+fn strip_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_tag = false;
+
+    for ch in input.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                if !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            }
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+
+    out.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
 }
 
 async fn bump(state: &AppState, source: &str) {

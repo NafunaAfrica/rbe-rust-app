@@ -20,6 +20,8 @@ pub struct Config {
     // --- External commerce integrations ---
     pub shopify_store_domain: String,
     pub shopify_storefront_token: String,
+    pub shopify_client_id: Option<String>,
+    pub shopify_client_secret: Option<String>,
     pub shopify_api_version: String,
     pub shopify_webhook_secret: Option<String>,
 
@@ -55,6 +57,8 @@ impl Config {
                 "SHOPIFY_STOREFRONT_TOKEN",
                 "f57a26bebd7fd009ce29dd16b8b79096",
             ),
+            shopify_client_id: opt("SHOPIFY_CLIENT_ID").or_else(|| opt("SHOPIFY_API_KEY")),
+            shopify_client_secret: opt("SHOPIFY_CLIENT_SECRET").or_else(|| opt("SHOPIFY_WEBHOOK_SECRET")),
             shopify_api_version: var("SHOPIFY_API_VERSION", "2025-07"),
             shopify_webhook_secret: opt("SHOPIFY_WEBHOOK_SECRET"),
 
