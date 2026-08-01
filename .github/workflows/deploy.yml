@@ -1,12 +1,5 @@
-# CI/CD: GitHub builds the container (the server cannot compile Rust), pushes it
-# to GitHub Container Registry (GHCR), then pings Coolify's deploy webhook so the
-# server pulls the new image. Matches the BrandZa infra (Coolify + Cloudflare).
-#
-# Optional repo secret (Settings → Secrets and variables → Actions):
-#   COOLIFY_WEBHOOK_URL   the app's "Deploy Webhook" URL from Coolify
-#   COOLIFY_TOKEN         a Coolify API token (Bearer) for the webhook
-# If COOLIFY_WEBHOOK_URL is absent, the redeploy step is skipped (build+push
-# still runs, and Coolify can auto-deploy by watching the image instead).
+# CI/CD: GitHub builds the container, pushes it to GHCR, then triggers
+# Coolify to pull the new image when a deploy webhook is configured.
 
 name: build-and-deploy
 
@@ -57,10 +50,13 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # Only runs if the Coolify webhook is configured.
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    if: ${{ secrets.COOLIFY_WEBHOOK_URL != '' }}
     steps:
       - name: Trigger Coolify redeploy
         run: |
-          curl -fsSL -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          if [ -n "${{ secrets.COOLIFY_TOKEN }}" ]; then
+            curl -fsSL -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          else
+            curl -fsSL -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          fi

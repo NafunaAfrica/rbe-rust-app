@@ -119,11 +119,12 @@ SurrealDB. Log in at `/auth`, then `/admin/printify` to sync products to Shopify
 Coolify → the app → *Webhooks* → copy the **Deploy Webhook** URL, then in GitHub
 → repo *Settings → Secrets and variables → Actions*:
 
-- Variable `DEPLOY_ENABLED` = `true`
 - Secret `COOLIFY_WEBHOOK_URL` = the webhook URL
 - Secret `COOLIFY_TOKEN` = a Coolify API token
 
 Now every push to `main` builds a fresh image and pings Coolify to pull it.
+If `COOLIFY_WEBHOOK_URL` is missing, the workflow will still build and push the
+image, but it will skip the live redeploy step.
 
 ---
 
