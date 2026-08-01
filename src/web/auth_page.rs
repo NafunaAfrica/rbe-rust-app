@@ -71,8 +71,9 @@ pub async fn login_submit(State(state): State<AppState>, Form(form): Form<LoginF
 
     match auth::issue_token(state.cfg(), &email, &role) {
         Ok(token) => {
-            // Admins land on the control panel; owners on the business dashboard.
-            let dest = if role == auth::ROLE_ADMIN { "/admin" } else { "/dashboard" };
+            // All staff land on the main dashboard first; admins can step into
+            // the deeper website-admin tools from there.
+            let dest = "/dashboard";
             (
                 [(header::SET_COOKIE, auth::session_cookie(auth::STAFF_COOKIE, &token))],
                 Redirect::to(dest),

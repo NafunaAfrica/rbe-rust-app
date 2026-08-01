@@ -52,7 +52,10 @@ pub async fn dashboard(
                         "One place to manage the storefront, content, orders, team access, and the Shopify connection that powers the bag and checkout."
                     }
                 }
-                a href="/auth/logout" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "Sign out" }
+                div class="flex flex-wrap items-center gap-3 sm:justify-end" {
+                    a href="/dashboard" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- Dashboard" }
+                    a href="/auth/logout" class="text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "Sign out" }
+                }
             }
 
             div class="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-5" {
