@@ -52,6 +52,37 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("listening on http://{bind_addr}");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    // Draining done; give the embedded DB a beat to flush before the process
+    // exits so a redeploy's stop doesn't kill SurrealKV mid-write.
+    tracing::info!("server stopped; flushing embedded database");
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     Ok(())
+}
+
+/// Resolve on SIGTERM (what `docker stop` sends on redeploy) or Ctrl-C, so the
+/// server drains in-flight requests and stops writing before the process exits.
+async fn shutdown_signal() {
+    use tokio::signal;
+    let ctrl_c = async {
+        let _ = signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    tracing::info!("shutdown signal received; draining connections");
 }
