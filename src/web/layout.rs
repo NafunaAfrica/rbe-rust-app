@@ -38,8 +38,9 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
             }
             body class="page-shell" {
                 div id="page-loader"
-                    class="fixed inset-0 z-[120] flex items-center justify-center bg-[color:var(--cream)]/92 backdrop-blur-md transition duration-300 ease-out" {
-                    div class="flex flex-col items-center gap-5 text-center" {
+                    class="fixed inset-0 z-[120] flex items-center justify-center bg-[color:var(--cream)] transition duration-300 ease-out" {
+                    div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22),transparent_62%)]" {}
+                    div class="relative flex flex-col items-center gap-5 text-center" {
                         div class="page-loader__mark font-display text-6xl leading-none tracking-tight text-ink md:text-8xl" {
                             "RBE" span class="text-[color:var(--hot)]" { "." }
                         }

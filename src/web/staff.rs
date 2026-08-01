@@ -41,8 +41,7 @@ pub async fn dashboard_owner(
                 (light_card("Orders & fulfilment", "Every Shopify order and its fulfilment status, in one place.", "/dashboard/orders"))
                 (light_card("Journal", "Write and publish posts to the RBE journal.", "/dashboard/posts"))
                 @if user.is_admin() {
-                    (light_card("Website admin", "Manage storefront tools, Shopify visibility, and settings.", "/admin"))
-                    (light_card("Users & access", "Manage staff logins and customer accounts.", "/admin/team"))
+                    (light_card("Website admin", "Manage storefront tools, Shopify visibility, users, and settings.", "/admin"))
                 }
             }
         }
