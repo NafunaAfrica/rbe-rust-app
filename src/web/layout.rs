@@ -37,31 +37,22 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
                 (cart_store_script())
             }
             body class="page-shell" {
-                (page_loader())
+                div id="page-loader"
+                    class="fixed inset-0 z-[120] flex items-center justify-center bg-[color:var(--cream)]/92 backdrop-blur-md transition duration-300 ease-out" {
+                    div class="flex flex-col items-center gap-5 text-center" {
+                        div class="page-loader__mark font-display text-6xl leading-none tracking-tight text-ink md:text-8xl" {
+                            "RBE" span class="text-[color:var(--hot)]" { "." }
+                        }
+                        div class="h-[2px] w-28 overflow-hidden rounded-full bg-ink/10" {
+                            div class="page-loader__line h-full w-full bg-[color:var(--hot)]" {}
+                        }
+                    }
+                }
                 div x-data="{}" class="flex min-h-screen flex-col" {
                     (header(nav))
                     main class="flex-1" { (body) }
                     (footer())
                     (cart_drawer())
-                }
-            }
-        }
-    }
-}
-
-fn page_loader() -> Markup {
-    html! {
-        div id="page-loader"
-            class="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center bg-[color:var(--cream)] transition duration-500 ease-out" {
-            div class="flex flex-col items-center gap-5 text-center" {
-                div class="font-display text-6xl leading-none tracking-tight text-ink md:text-8xl" {
-                    "RBE" span class="text-[color:var(--hot)]" { "." }
-                }
-                div class="h-[3px] w-40 overflow-hidden rounded-full bg-ink/10" {
-                    div class="page-loader__bar h-full w-1/2 rounded-full bg-[color:var(--hot)]" {}
-                }
-                p class="max-w-xs text-[11px] uppercase tracking-[0.45em] text-ink/55" {
-                    "Loading the drop"
                 }
             }
         }
@@ -260,54 +251,58 @@ document.addEventListener('alpine:init', () => {
 fn page_loader_script() -> Markup {
     PreEscaped(
         r#"<style>
-html.is-loading,
-html.is-loading body {
-  overflow: hidden;
-}
-#page-loader {
-  opacity: 1;
-  visibility: visible;
-}
 #page-loader.is-hidden {
   opacity: 0;
   visibility: hidden;
 }
-.page-loader__bar {
-  animation: page-loader-bar 1.15s ease-in-out infinite;
+#page-loader.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+.page-loader__mark {
+  animation: page-loader-breathe 1.2s ease-in-out infinite alternate;
+}
+.page-loader__line {
   transform-origin: left center;
+  animation: page-loader-line 1.1s ease-in-out infinite;
 }
-body.page-ready main {
-  animation: page-content-rise 0.5s ease-out both;
+@keyframes page-loader-breathe {
+  from { transform: translateY(0); opacity: 0.82; }
+  to { transform: translateY(-2px); opacity: 1; }
 }
-@keyframes page-loader-bar {
-  0% { transform: translateX(-110%) scaleX(0.55); }
-  55% { transform: translateX(90%) scaleX(1); }
-  100% { transform: translateX(220%) scaleX(0.6); }
-}
-@keyframes page-content-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes page-loader-line {
+  0% { transform: translateX(-105%) scaleX(0.4); }
+  55% { transform: translateX(0%) scaleX(0.95); }
+  100% { transform: translateX(105%) scaleX(0.5); }
 }
 </style>
 <script>
 (() => {
-  const doc = document.documentElement;
-  doc.classList.add('is-loading');
+  const getLoader = () => document.getElementById('page-loader');
+  let showTimer = null;
 
   const hideLoader = () => {
-    const loader = document.getElementById('page-loader');
+    const loader = getLoader();
     if (!loader) return;
+    window.clearTimeout(showTimer);
     loader.classList.add('is-hidden');
-    doc.classList.remove('is-loading');
-    document.body?.classList.add('page-ready');
+    loader.classList.remove('is-active');
   };
 
-  const showLoader = () => {
-    const loader = document.getElementById('page-loader');
+  const activateLoader = () => {
+    const loader = getLoader();
     if (!loader) return;
     loader.classList.remove('is-hidden');
-    doc.classList.add('is-loading');
-    document.body?.classList.remove('page-ready');
+    loader.classList.add('is-active');
+  };
+
+  const queueLoader = () => {
+    const loader = getLoader();
+    if (!loader) return;
+    window.clearTimeout(showTimer);
+    showTimer = window.setTimeout(() => {
+      activateLoader();
+    }, 140);
   };
 
   const isInternalNav = (link) => {
@@ -325,12 +320,12 @@ body.page-ready main {
   document.addEventListener('click', (event) => {
     const link = event.target.closest('a');
     if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (isInternalNav(link)) showLoader();
+    if (isInternalNav(link)) queueLoader();
   });
 
-  document.addEventListener('submit', () => showLoader());
+  document.addEventListener('submit', () => queueLoader());
   window.addEventListener('pageshow', hideLoader);
-  window.addEventListener('load', () => window.setTimeout(hideLoader, 180), { once: true });
+  window.addEventListener('load', () => window.setTimeout(hideLoader, 120), { once: true });
 })();
 </script>"#
             .to_string(),
