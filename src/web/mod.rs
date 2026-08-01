@@ -71,6 +71,10 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/products/delete", post(admin::product_delete))
         .route("/admin/shopify", get(admin::shopify_page))
         .route("/admin/team", get(staff::team_page).post(staff::team_create))
+        .route("/admin/team/staff-password", post(staff::staff_password_update))
+        .route("/admin/team/staff-delete", post(staff::staff_delete))
+        .route("/admin/team/customer-password", post(staff::customer_password_update))
+        .route("/admin/team/customer-delete", post(staff::customer_delete))
         .route("/admin/printify", get(admin::printify_page))
         .route("/admin/printify/sync", get(admin::printify_sync_stream))
         // Webhooks

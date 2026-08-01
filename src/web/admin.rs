@@ -34,6 +34,8 @@ struct DashboardStats {
     published_posts: usize,
     orders: usize,
     live_shopify_products: usize,
+    staff_accounts: usize,
+    customer_accounts: usize,
 }
 
 pub async fn dashboard(
@@ -66,6 +68,11 @@ pub async fn dashboard(
                 (stat("Published posts", &stats.published_posts.to_string()))
             }
 
+            div class="mt-4 grid gap-4 sm:grid-cols-2" {
+                (stat("Staff accounts", &stats.staff_accounts.to_string()))
+                (stat("Customer accounts", &stats.customer_accounts.to_string()))
+            }
+
             div class="mt-10 grid gap-4 lg:grid-cols-3" {
                 (admin_card(
                     "Product manager",
@@ -88,8 +95,8 @@ pub async fn dashboard(
                     "/dashboard/orders",
                 ))
                 (admin_card(
-                    "Team access",
-                    "Create owner accounts and control who can sign in to manage the site.",
+                    "Users & access",
+                    "Create owner accounts, reset passwords, and manage shopper logins.",
                     "/admin/team",
                 ))
                 (admin_card(
@@ -153,6 +160,16 @@ async fn load_dashboard_stats(state: &AppState) -> AppResult<DashboardStats> {
         .query("SELECT count() AS count FROM order GROUP ALL")
         .await?
         .take(0)?;
+    let staff_rows: Vec<CountRow> = state
+        .db()
+        .query("SELECT count() AS count FROM staff GROUP ALL")
+        .await?
+        .take(0)?;
+    let customer_rows: Vec<CountRow> = state
+        .db()
+        .query("SELECT count() AS count FROM customer GROUP ALL")
+        .await?
+        .take(0)?;
 
     let shopify = Shopify::new(state.cfg(), state.http());
     let mut live_shopify_products = 0;
@@ -168,6 +185,8 @@ async fn load_dashboard_stats(state: &AppState) -> AppResult<DashboardStats> {
         published_posts: posts.iter().filter(|p| p.is_published()).count(),
         orders: order_rows.first().map(|r| r.count).unwrap_or(0),
         live_shopify_products,
+        staff_accounts: staff_rows.first().map(|r| r.count).unwrap_or(0),
+        customer_accounts: customer_rows.first().map(|r| r.count).unwrap_or(0),
     })
 }
 

@@ -331,6 +331,52 @@ pub async fn create_staff(
         .bind(("hash", password_hash.to_string()))
         .bind(("role", role.to_string()))
         .await?
+    .check()?;
+    Ok(())
+}
+
+/// Update a staff password by email.
+pub async fn update_staff_password(
+    db: &Surreal<Db>,
+    email: &str,
+    password_hash: &str,
+) -> anyhow::Result<()> {
+    db.query("UPDATE staff SET password_hash = $hash WHERE email = $email")
+        .bind(("email", email.trim().to_lowercase()))
+        .bind(("hash", password_hash.to_string()))
+        .await?
+        .check()?;
+    Ok(())
+}
+
+/// Delete a non-admin staff member by email.
+pub async fn delete_staff(db: &Surreal<Db>, email: &str) -> anyhow::Result<()> {
+    db.query("DELETE staff WHERE email = $email")
+        .bind(("email", email.trim().to_lowercase()))
+        .await?
+        .check()?;
+    Ok(())
+}
+
+/// Update a customer password by email.
+pub async fn update_customer_password(
+    db: &Surreal<Db>,
+    email: &str,
+    password_hash: &str,
+) -> anyhow::Result<()> {
+    db.query("UPDATE customer SET password_hash = $hash WHERE email = $email")
+        .bind(("email", email.trim().to_lowercase()))
+        .bind(("hash", password_hash.to_string()))
+        .await?
+        .check()?;
+    Ok(())
+}
+
+/// Delete a customer by email.
+pub async fn delete_customer(db: &Surreal<Db>, email: &str) -> anyhow::Result<()> {
+    db.query("DELETE customer WHERE email = $email")
+        .bind(("email", email.trim().to_lowercase()))
+        .await?
         .check()?;
     Ok(())
 }
