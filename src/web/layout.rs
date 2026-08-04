@@ -3,6 +3,9 @@
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
+const SITE_URL: &str = "https://rbemood.com";
+const DEFAULT_OG_IMAGE: &str = "https://rbemood.com/static/img/hero-tee.jpg";
+
 /// Which nav item is active, for highlighting.
 #[derive(PartialEq)]
 pub enum Nav {
@@ -21,9 +24,20 @@ pub fn shell(title: &str, description: &str, nav: Nav, body: Markup) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (title) }
                 meta name="description" content=(description);
+                meta property="og:site_name" content="RBE";
+                meta property="og:type" content="website";
                 meta property="og:title" content=(title);
                 meta property="og:description" content=(description);
+                meta property="og:url" content=(SITE_URL);
+                meta property="og:image" content=(DEFAULT_OG_IMAGE);
+                meta property="og:image:alt" content="RBE Rich B Energy oversized slogan tee";
+                meta property="og:image:width" content="1200";
+                meta property="og:image:height" content="630";
                 meta name="twitter:card" content="summary_large_image";
+                meta name="twitter:title" content=(title);
+                meta name="twitter:description" content=(description);
+                meta name="twitter:image" content=(DEFAULT_OG_IMAGE);
+                link rel="canonical" href=(SITE_URL);
                 link rel="icon" href="/static/img/fav.svg" type="image/svg+xml";
                 link rel="alternate icon" href="/static/favicon.ico" type="image/x-icon";
                 link rel="preconnect" href="https://fonts.googleapis.com";
