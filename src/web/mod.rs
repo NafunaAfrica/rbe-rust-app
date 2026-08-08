@@ -48,6 +48,7 @@ pub fn router(state: AppState) -> Router {
         .route("/journal", get(blog::journal))
         .route("/journal/{slug}", get(blog::article))
         .route("/api/checkout", post(shop::checkout))
+        .route("/api/newsletter/subscribe", post(home::newsletter_subscribe))
         .route("/events", get(events::events))
         // Customer accounts
         .route("/account", get(account::account_page))

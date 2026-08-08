@@ -12,7 +12,7 @@ use std::convert::Infallible;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::auth::AdminUser;
+use crate::auth::StaffUser;
 use crate::db;
 use crate::error::AppResult;
 use crate::models::{Post, Product};
@@ -39,7 +39,7 @@ struct DashboardStats {
 }
 
 pub async fn dashboard(
-    _admin: AdminUser,
+    user: StaffUser,
     State(state): State<AppState>,
 ) -> AppResult<Html<String>> {
     let stats = load_dashboard_stats(&state).await?;
@@ -94,11 +94,13 @@ pub async fn dashboard(
                     "Review incoming Shopify orders and shipment status from your fulfilment flow.",
                     "/dashboard/orders",
                 ))
-                (admin_card(
-                    "Users & access",
-                    "Create owner accounts, reset passwords, and manage shopper logins.",
-                    "/admin/team",
-                ))
+                @if user.is_admin() {
+                    (admin_card(
+                        "Users & access",
+                        "Create owner accounts, reset passwords, and manage shopper logins.",
+                        "/admin/team",
+                    ))
+                }
                 (admin_card(
                     "Storefront",
                     "Open the public shop and verify the customer-facing experience.",
@@ -196,7 +198,7 @@ struct ProductVisibility {
 }
 
 pub async fn shopify_page(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
 ) -> AppResult<Html<String>> {
     let products: Vec<Product> = state
@@ -358,7 +360,7 @@ pub async fn shopify_page(
 }
 
 pub async fn products_page(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
 ) -> AppResult<Html<String>> {
     let products: Vec<Product> = state
@@ -421,12 +423,12 @@ pub async fn products_page(
     ).into_string()))
 }
 
-pub async fn product_new(_admin: AdminUser) -> Html<String> {
+pub async fn product_new(_user: StaffUser) -> Html<String> {
     Html(product_editor(None, None).into_string())
 }
 
 pub async fn product_edit(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> AppResult<Html<String>> {
@@ -468,7 +470,7 @@ pub struct ProductForm {
 }
 
 pub async fn product_save(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
     Form(f): Form<ProductForm>,
 ) -> Response {
@@ -570,7 +572,7 @@ pub async fn product_save(
 }
 
 pub async fn product_delete(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
     Form(f): Form<ProductDeleteForm>,
 ) -> Response {
@@ -755,7 +757,7 @@ fn slugify(s: &str) -> String {
 }
 
 pub async fn printify_page(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
 ) -> AppResult<Html<String>> {
     let products: Vec<Product> = state
@@ -864,7 +866,7 @@ pub struct SyncQuery {
 }
 
 pub async fn printify_sync_stream(
-    _admin: AdminUser,
+    _user: StaffUser,
     State(state): State<AppState>,
     Query(q): Query<SyncQuery>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {

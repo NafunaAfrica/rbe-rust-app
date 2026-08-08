@@ -49,6 +49,10 @@ async fn define_schema(db: &Surreal<Db>) -> anyhow::Result<()> {
         DEFINE FIELD IF NOT EXISTS email ON customer TYPE string;
         DEFINE INDEX IF NOT EXISTS customer_email ON customer FIELDS email UNIQUE;
 
+        DEFINE TABLE IF NOT EXISTS newsletter_subscriber SCHEMALESS;
+        DEFINE FIELD IF NOT EXISTS email ON newsletter_subscriber TYPE string;
+        DEFINE INDEX IF NOT EXISTS newsletter_subscriber_email ON newsletter_subscriber FIELDS email UNIQUE;
+
         DEFINE TABLE IF NOT EXISTS post SCHEMALESS;
         DEFINE FIELD IF NOT EXISTS slug ON post TYPE string;
         DEFINE INDEX IF NOT EXISTS post_slug ON post FIELDS slug UNIQUE;
@@ -317,6 +321,31 @@ pub async fn create_customer(
         .await?
         .check()?;
     Ok(())
+}
+
+/// Save a newsletter subscriber if they are new. Returns `true` when inserted
+/// and `false` when the email already exists.
+pub async fn create_newsletter_subscriber(
+    db: &Surreal<Db>,
+    email: &str,
+    source: &str,
+) -> anyhow::Result<bool> {
+    let email = email.trim().to_lowercase();
+    let all: Vec<crate::models::NewsletterSubscriber> = db
+        .query("SELECT * FROM newsletter_subscriber")
+        .await?
+        .take(0)?;
+    if all.iter().any(|row| row.email == email) {
+        return Ok(false);
+    }
+    db.query(
+        "CREATE newsletter_subscriber CONTENT { email: $email, source: $source, created_at: time::now() }",
+    )
+    .bind(("email", email))
+    .bind(("source", source.to_string()))
+    .await?
+    .check()?;
+    Ok(true)
 }
 
 /// Create a new staff member (used by the admin "Team" screen).

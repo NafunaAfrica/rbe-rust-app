@@ -1,9 +1,13 @@
 //! Home page — ported from the reference `src/routes/index.tsx`.
 
+use axum::Json;
 use axum::extract::State;
-use axum::response::Html;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse};
 use maud::{Markup, html};
+use serde::{Deserialize, Serialize};
 
+use crate::db;
 use crate::error::AppResult;
 use crate::models::Product;
 use crate::state::AppState;
@@ -12,8 +16,16 @@ use super::layout::{Nav, shell};
 use super::tee_mockup;
 
 const MARQUEE: &[&str] = &[
-    "RICH B ENERGY", "★", "HOT GIRLS GO TO THERAPY", "★", "CALL ME WHEN YOU'RE RICH",
-    "★", "BAD B CLUB", "★", "ALL SUGAR NO DADDY", "★",
+    "RICH B ENERGY",
+    "★",
+    "HOT GIRLS GO TO THERAPY",
+    "★",
+    "CALL ME WHEN YOU'RE RICH",
+    "★",
+    "BAD B CLUB",
+    "★",
+    "ALL SUGAR NO DADDY",
+    "★",
 ];
 
 pub async fn home(State(state): State<AppState>) -> AppResult<Html<String>> {
@@ -41,6 +53,65 @@ pub async fn home(State(state): State<AppState>) -> AppResult<Html<String>> {
         )
         .into_string(),
     ))
+}
+
+#[derive(Deserialize)]
+pub struct NewsletterSubscribeInput {
+    email: String,
+}
+
+#[derive(Serialize)]
+pub struct NewsletterSubscribeOutput {
+    ok: bool,
+    saved: bool,
+    message: String,
+}
+
+pub async fn newsletter_subscribe(
+    State(state): State<AppState>,
+    Json(input): Json<NewsletterSubscribeInput>,
+) -> impl IntoResponse {
+    let email = input.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(NewsletterSubscribeOutput {
+                ok: false,
+                saved: false,
+                message: "Enter a valid email address.".into(),
+            }),
+        );
+    }
+
+    match db::create_newsletter_subscriber(state.db(), &email, "homepage").await {
+        Ok(true) => (
+            StatusCode::OK,
+            Json(NewsletterSubscribeOutput {
+                ok: true,
+                saved: true,
+                message: "You're in. Watch your inbox.".into(),
+            }),
+        ),
+        Ok(false) => (
+            StatusCode::OK,
+            Json(NewsletterSubscribeOutput {
+                ok: true,
+                saved: false,
+                message: "You're already on the list.".into(),
+            }),
+        ),
+        Err(err) => {
+            tracing::error!(?err, "failed to save newsletter subscriber");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(NewsletterSubscribeOutput {
+                    ok: false,
+                    saved: false,
+                    message: "We couldn't save that right now. Please try again.".into(),
+                }),
+            )
+        }
+    }
 }
 
 fn hero() -> Markup {
@@ -179,14 +250,36 @@ fn newsletter() -> Markup {
                     "Early access to drops, 10% off your first tee, and zero spam."
                 }
                 form class="mx-auto mt-6 flex max-w-md gap-2"
-                    x-data="{ email: '' }"
-                    "@submit.prevent"="alert(\"You're in. Watch your inbox 💌\")" {
+                    x-data="{ email: '', status: 'idle', message: '' }"
+                    "@submit.prevent"="
+                        status = 'loading';
+                        message = '';
+                        fetch('/api/newsletter/subscribe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email })
+                        })
+                        .then(async (response) => {
+                            const data = await response.json();
+                            status = data.ok ? 'success' : 'error';
+                            message = data.message || 'Please try again.';
+                            if (data.ok) email = '';
+                        })
+                        .catch(() => {
+                            status = 'error';
+                            message = 'Please try again.';
+                        });
+                    " {
                     input type="email" required placeholder="your@email.com" "x-model"="email"
                         class="flex-1 rounded-full border border-ink/20 bg-white px-5 py-3 text-sm outline-none focus:border-[color:var(--hot)]";
-                    button class="rounded-full bg-[color:var(--hot)] px-6 py-3 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" {
-                        "Join"
+                    button type="submit"
+                        ":disabled"="status === 'loading'"
+                        class="rounded-full bg-[color:var(--hot)] px-6 py-3 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)] disabled:cursor-wait disabled:opacity-70" {
+                        span x-show="status !== 'loading'" { "Join" }
+                        span x-show="status === 'loading'" { "Saving..." }
                     }
                 }
+                p class="mt-3 text-sm text-ink/70" x-text="message" x-show="message" {}
             }
         }
     }

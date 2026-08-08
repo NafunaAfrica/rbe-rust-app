@@ -62,6 +62,16 @@ pub struct Customer {
     pub name: Option<String>,
 }
 
+/// A newsletter subscriber captured from the storefront subscribe form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsletterSubscriber {
+    pub email: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+}
+
 /// A journal/blog post. Body is authored in Markdown. Timestamps are stored as
 /// RFC3339 strings (set from Rust) to keep deserialization simple.
 #[derive(Debug, Clone, Serialize, Deserialize)]

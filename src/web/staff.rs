@@ -38,10 +38,12 @@ pub async fn dashboard_owner(
             div class="mt-8" { (analytics) }
 
             div class="mt-10 grid gap-4 sm:grid-cols-2" {
+                (light_card("Product manager", "Add, edit, and connect your products to the right Shopify checkout.", "/admin/products"))
                 (light_card("Orders & fulfilment", "Every Shopify order and its fulfilment status, in one place.", "/dashboard/orders"))
                 (light_card("Journal", "Write and publish posts to the RBE journal.", "/dashboard/posts"))
+                (light_card("Website admin", "Storefront tools, Shopify visibility, and the Printify sync.", "/admin"))
                 @if user.is_admin() {
-                    (light_card("Website admin", "Manage storefront tools, Shopify visibility, users, and settings.", "/admin"))
+                    (light_card("Users & access", "Create owners, reset passwords, and manage shopper logins.", "/admin/team"))
                 }
             }
         }
