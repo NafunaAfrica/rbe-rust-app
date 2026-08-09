@@ -48,6 +48,11 @@ async fn main() -> anyhow::Result<()> {
 
     let bind_addr = cfg.bind_addr.clone();
     let state = AppState::new(cfg, db);
+    if let Err(err) = services::catalog_sync::sync_shopify_catalog(&state).await {
+        tracing::warn!(error = %err, "shopify catalog sync skipped");
+    } else {
+        tracing::info!("shopify catalog synced into local storefront");
+    }
     let app = web::router(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
