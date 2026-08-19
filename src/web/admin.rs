@@ -362,6 +362,7 @@ pub async fn shopify_page(
 pub async fn products_page(
     _user: StaffUser,
     State(state): State<AppState>,
+    Query(flash): Query<ResyncFlash>,
 ) -> AppResult<Html<String>> {
     let products: Vec<Product> = state
         .db()
@@ -376,13 +377,22 @@ pub async fn products_page(
                     div class="text-xs uppercase tracking-widest text-[color:var(--hot)]" { "Catalog manager" }
                     h1 class="mt-2 font-display text-5xl" { "Products" }
                     p class="mt-2 max-w-2xl text-sm opacity-70" {
-                        "This is your site catalog. The slug controls the page URL on this website, and the Shopify handle tells checkout which Shopify product to open."
+                        "This mirrors your Shopify store: every " strong { "Active" } " product syncs here automatically (and again every few minutes). Draft a product in Shopify and it drops off the site. Use " strong { "Sync from Shopify" } " to pull changes right now."
                     }
                 }
                 div class="flex flex-wrap items-center gap-3 sm:justify-end" {
                     a href="/admin" class="inline-flex items-center text-sm uppercase tracking-widest opacity-60 hover:opacity-100" { "<- Admin" }
+                    form method="post" action="/admin/products/resync" class="inline" {
+                        button type="submit" class="inline-flex items-center justify-center rounded-full border border-ink/20 px-5 py-2 text-sm font-semibold uppercase tracking-widest hover:border-[color:var(--hot)] hover:text-[color:var(--hot)]" { "Sync from Shopify" }
+                    }
                     a href="/admin/products/new" class="inline-flex items-center justify-center rounded-full bg-[color:var(--hot)] px-5 py-2 text-sm font-semibold uppercase tracking-widest text-white hover:bg-[color:var(--crimson)]" { "New product" }
                 }
+            }
+
+            @match flash.synced.as_deref() {
+                Some("ok") => div class="mt-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800" { "Synced from Shopify. Active products are up to date." },
+                Some("err") => div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" { "Couldn't reach Shopify just now — the catalog is unchanged. Try again in a moment." },
+                _ => {}
             }
 
             div class="mt-8 overflow-hidden rounded-xl border border-ink/10 bg-white" {
@@ -421,6 +431,24 @@ pub async fn products_page(
         Nav::None,
         body,
     ).into_string()))
+}
+
+#[derive(Deserialize, Default)]
+pub struct ResyncFlash {
+    #[serde(default)]
+    synced: Option<String>,
+}
+
+/// Manual "Sync from Shopify" — pull the active catalog on demand instead of
+/// waiting for the periodic background sync.
+pub async fn products_resync(_user: StaffUser, State(state): State<AppState>) -> Response {
+    match crate::services::catalog_sync::sync_shopify_catalog(&state).await {
+        Ok(()) => Redirect::to("/admin/products?synced=ok").into_response(),
+        Err(e) => {
+            tracing::warn!(error = %e, "manual shopify catalog sync failed");
+            Redirect::to("/admin/products?synced=err").into_response()
+        }
+    }
 }
 
 pub async fn product_new(_user: StaffUser) -> Html<String> {

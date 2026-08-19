@@ -53,6 +53,24 @@ async fn main() -> anyhow::Result<()> {
     } else {
         tracing::info!("shopify catalog synced into local storefront");
     }
+
+    // Keep the storefront mirrored to Shopify's ACTIVE products without needing a
+    // redeploy: re-sync in the background every few minutes. Activating a product
+    // in Shopify makes it appear on the site on its own; drafting it removes it.
+    {
+        let sync_state = state.clone();
+        tokio::spawn(async move {
+            let period = std::time::Duration::from_secs(600);
+            loop {
+                tokio::time::sleep(period).await;
+                match services::catalog_sync::sync_shopify_catalog(&sync_state).await {
+                    Ok(()) => tracing::debug!("periodic shopify catalog sync ok"),
+                    Err(err) => tracing::warn!(error = %err, "periodic shopify catalog sync failed"),
+                }
+            }
+        });
+    }
+
     let app = web::router(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

@@ -117,6 +117,19 @@ pub struct AccessScope {
     pub handle: String,
 }
 
+/// A trimmed active product from the Admin API, carrying just what the
+/// storefront catalog sync needs.
+#[derive(Debug, Clone)]
+pub struct AdminCatalogProduct {
+    pub handle: String,
+    pub title: String,
+    pub description: String,
+    pub price_amount: f64,
+    pub image_url: Option<String>,
+    /// Colour option value, if we ever fetch it (unused for now → tee tint defaults).
+    pub color: Option<String>,
+}
+
 /// Generic Shopify `{ edges: [{ node }] }` connection, flattened to a Vec.
 #[derive(Debug, Clone)]
 pub struct Edges<T>(pub Vec<T>);
@@ -301,6 +314,52 @@ impl<'a> Shopify<'a> {
         Ok(Some(p))
     }
 
+    /// All **active** products from the Admin API, for the storefront catalog
+    /// sync. Unlike the Storefront API, this sees every active product
+    /// regardless of which sales channel it's published to — so newly-activated
+    /// products (any print provider) show up without any channel/token fiddling.
+    pub async fn admin_active_products(&self, first: i32) -> AppResult<Vec<AdminCatalogProduct>> {
+        let data = self
+            .admin_request(ADMIN_ACTIVE_PRODUCTS_QUERY, json!({ "first": first }))
+            .await?;
+
+        #[derive(Deserialize)]
+        struct ImgUrl {
+            url: String,
+        }
+        #[derive(Deserialize)]
+        struct PriceRangeV2 {
+            #[serde(rename = "minVariantPrice")]
+            min_variant_price: Money,
+        }
+        #[derive(Deserialize)]
+        struct Node {
+            handle: String,
+            title: String,
+            #[serde(default)]
+            description: String,
+            #[serde(rename = "featuredImage")]
+            featured_image: Option<ImgUrl>,
+            #[serde(rename = "priceRangeV2")]
+            price_range_v2: PriceRangeV2,
+        }
+
+        let edges: Edges<Node> = serde_json::from_value(data["products"].clone())
+            .map_err(|e| AppError::Other(e.into()))?;
+        Ok(edges
+            .0
+            .into_iter()
+            .map(|n| AdminCatalogProduct {
+                handle: n.handle,
+                title: n.title,
+                description: n.description,
+                price_amount: n.price_range_v2.min_variant_price.amount.parse().unwrap_or(0.0),
+                image_url: n.featured_image.map(|i| i.url),
+                color: None,
+            })
+            .collect())
+    }
+
     pub async fn current_app_scopes(&self) -> AppResult<Vec<String>> {
         let data = self
             .admin_request(CURRENT_APP_SCOPES_QUERY, json!({}))
@@ -403,6 +462,19 @@ query AdminProductByHandle($handle: String!) {
         }
       }
     }
+  }
+}"#;
+
+const ADMIN_ACTIVE_PRODUCTS_QUERY: &str = r#"
+query AdminActiveProducts($first: Int!) {
+  products(first: $first, query: "status:active") {
+    edges { node {
+      handle
+      title
+      description
+      featuredImage { url }
+      priceRangeV2 { minVariantPrice { amount currencyCode } }
+    } }
   }
 }"#;
 

@@ -67,6 +67,7 @@ pub fn router(state: AppState) -> Router {
         // Admin (guarded by the AdminUser extractor inside each handler)
         .route("/admin", get(admin::dashboard))
         .route("/admin/products", get(admin::products_page).post(admin::product_save))
+        .route("/admin/products/resync", post(admin::products_resync))
         .route("/admin/products/new", get(admin::product_new))
         .route("/admin/products/{slug}/edit", get(admin::product_edit))
         .route("/admin/products/delete", post(admin::product_delete))

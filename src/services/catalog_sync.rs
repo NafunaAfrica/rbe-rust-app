@@ -4,15 +4,22 @@ use crate::db;
 use crate::models::Product;
 use crate::state::AppState;
 
-use super::shopify::{Product as ShopifyProduct, Shopify};
+use super::shopify::{AdminCatalogProduct, Shopify};
 
 pub async fn sync_shopify_catalog(state: &AppState) -> anyhow::Result<()> {
     let shopify = Shopify::new(state.cfg(), state.http());
-    let remote = shopify.products(50).await?;
-    let remote: Vec<ShopifyProduct> = remote
+    // Admin API → every ACTIVE product, regardless of sales channel/token
+    // visibility, so newly-activated products always sync onto the site.
+    let remote = shopify.admin_active_products(100).await?;
+    let remote: Vec<AdminCatalogProduct> = remote
         .into_iter()
         .filter(|product| !is_placeholder_product(&product.handle))
         .collect();
+
+    // Safety: never wipe the storefront on an empty/degraded remote response.
+    if remote.is_empty() {
+        return Ok(());
+    }
 
     let existing: Vec<Product> = state
         .db()
@@ -51,7 +58,7 @@ pub async fn sync_shopify_catalog(state: &AppState) -> anyhow::Result<()> {
 }
 
 fn curated_product(
-    remote: &ShopifyProduct,
+    remote: &AdminCatalogProduct,
     existing_by_handle: &HashMap<String, Product>,
     existing_by_slug: &HashMap<String, Product>,
 ) -> Product {
@@ -94,18 +101,18 @@ fn curated_product(
         .or_else(|| existing.map(|row| row.scale))
         .unwrap_or(1.0);
 
-    let price = remote
-        .price_range
-        .min_variant_price
-        .amount
-        .parse::<f64>()
-        .ok()
-        .map(|v| v.round() as i64)
-        .unwrap_or_else(|| existing.map(|row| row.price).unwrap_or(0));
+    let price = {
+        let rounded = remote.price_amount.round() as i64;
+        if rounded > 0 {
+            rounded
+        } else {
+            existing.map(|row| row.price).unwrap_or(0)
+        }
+    };
 
     let image = remote
-        .first_image()
-        .map(|image| image.url.clone())
+        .image_url
+        .clone()
         .or_else(|| existing.map(|row| row.image.clone()))
         .unwrap_or_else(|| "/static/img/hero-tee.jpg".to_string());
 
@@ -138,59 +145,55 @@ fn curated_product(
 }
 
 fn is_placeholder_product(handle: &str) -> bool {
-    matches!(
-        handle,
-        "snow-washed-oversized-cotton-t-shirt" | "unisex-seamless-cotton-t-shirt"
-    )
+    // Only genuinely blank draft templates. (We sync status:active only, so
+    // real active products are never filtered — even when a print provider gives
+    // them a generic blueprint handle like "unisex-seamless-cotton-t-shirt".)
+    matches!(handle, "snow-washed-oversized-cotton-t-shirt")
 }
 
-fn derived_slug(remote: &ShopifyProduct) -> String {
+fn derived_slug(remote: &AdminCatalogProduct) -> String {
     if let Some(quoted) = first_quoted_segment(&remote.title) {
         return slugify(quoted);
     }
-    slugify(&remote.handle)
+    // Fall back to the title, not the handle — some providers hand out a generic
+    // blueprint handle (e.g. "unisex-seamless-cotton-t-shirt") that would make an
+    // ugly, wrong slug.
+    let from_title = slugify(&remote.title);
+    if from_title.is_empty() {
+        slugify(&remote.handle)
+    } else {
+        from_title
+    }
 }
 
-fn derived_slogan(remote: &ShopifyProduct) -> String {
-    if let Some(quoted) = first_quoted_segment(&remote.title) {
-        return quoted
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .chunks(2)
-            .map(|chunk| chunk.join(" "))
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
+fn derived_slogan(remote: &AdminCatalogProduct) -> String {
+    // Prefer a quoted slogan in the title; otherwise use the title itself (never
+    // the handle). Broken into ~2-word lines, uppercased for the RBE look.
+    let source = first_quoted_segment(&remote.title)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| remote.title.clone());
 
-    remote
-        .handle
-        .split('-')
-        .map(|part| part.to_ascii_uppercase())
+    source
+        .split_whitespace()
         .collect::<Vec<_>>()
         .chunks(2)
-        .map(|chunk| chunk.join(" "))
+        .map(|chunk| chunk.join(" ").to_ascii_uppercase())
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-fn derived_vibe(remote: &ShopifyProduct) -> String {
+fn derived_vibe(remote: &AdminCatalogProduct) -> String {
     if remote.title.to_ascii_lowercase().contains("crop") {
         "Crop energy".to_string()
     } else if remote.title.to_ascii_lowercase().contains("oversized") {
         "Oversized".to_string()
     } else {
-        "Shopify live".to_string()
+        "New drop".to_string()
     }
 }
 
-fn color_hex(remote: &ShopifyProduct) -> &'static str {
-    let color = remote
-        .options
-        .iter()
-        .find(|option| option.name.eq_ignore_ascii_case("Color"))
-        .and_then(|option| option.values.first())
-        .map(|value| value.as_str())
-        .unwrap_or("White");
+fn color_hex(remote: &AdminCatalogProduct) -> &'static str {
+    let color = remote.color.as_deref().unwrap_or("White");
 
     match color.to_ascii_lowercase().as_str() {
         "black" => "#0a0a0a",
